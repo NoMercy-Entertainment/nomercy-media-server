@@ -1,0 +1,261 @@
+{
+ "series": "Silo, seasons 1-2 (western live action)",
+ "library_type": "tv",
+ "source": "chapters.vtt of the encoded episodes in Z:/TV.Shows/TV.Shows/Silo.(2023), read 2026-11-17",
+ "truth": "Chapter titles; #598 research frame-checked the S01 openings (6/6). \"Intro\" is the 77 s title sequence after a cold open of 2-14 min. In S02 E03/E04/E06-E10 it sits at position 4 (Studio Logo / Recap / Scene 01 / Intro), so the position-1-or-2 rule does not report it (safe side; the web fallback still offers it).",
+ "shape": "S01: Chapter 1 (cold open) / Intro / Chapter 2. S02: the same, or Studio Logo / Recap / Scene 01 / Intro / Scene 02 / Credits.",
+ "episodes": [
+  {
+   "episode": "S01E02",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:29.958"},
+    {"title": "Intro", "start": "00:02:29.958", "end": "00:03:46.916"},
+    {"title": "Chapter 2", "start": "00:03:46.916", "end": "00:47:46.848"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 149.958, "end": 226.916}
+   ],
+   "story": [
+    {"start": 0.0, "end": 149.958, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E03",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:08.666"},
+    {"title": "Intro", "start": "00:02:08.666", "end": "00:03:25.625"},
+    {"title": "Chapter 2", "start": "00:03:25.625", "end": "01:02:02.976"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 128.666, "end": 205.625}
+   ],
+   "story": [
+    {"start": 0.0, "end": 128.666, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E04",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:04:22.207"},
+    {"title": "Intro", "start": "00:04:22.207", "end": "00:05:39.166"},
+    {"title": "Chapter 2", "start": "00:05:39.166", "end": "00:45:06.208"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 262.207, "end": 339.166}
+   ],
+   "story": [
+    {"start": 0.0, "end": 262.207, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E05",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:14:26.458"},
+    {"title": "Intro", "start": "00:14:26.458", "end": "00:15:43.415"},
+    {"title": "Chapter 2", "start": "00:15:43.415", "end": "00:50:50.592"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 866.458, "end": 943.415}
+   ],
+   "story": [
+    {"start": 0.0, "end": 866.458, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E06",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:25.750"},
+    {"title": "Intro", "start": "00:02:25.750", "end": "00:03:42.708"},
+    {"title": "Chapter 2", "start": "00:03:42.708", "end": "00:50:38.815"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 145.75, "end": 222.708}
+   ],
+   "story": [
+    {"start": 0.0, "end": 145.75, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E07",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:53.291"},
+    {"title": "Intro", "start": "00:03:53.291", "end": "00:05:10.207"},
+    {"title": "Chapter 2", "start": "00:05:10.207", "end": "00:47:11.264"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 233.291, "end": 310.207}
+   ],
+   "story": [
+    {"start": 0.0, "end": 233.291, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E08",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:05:26.041"},
+    {"title": "Intro", "start": "00:05:26.041", "end": "00:06:43.000"},
+    {"title": "Chapter 2", "start": "00:06:43.000", "end": "00:43:25.792"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 326.041, "end": 403.0}
+   ],
+   "story": [
+    {"start": 0.0, "end": 326.041, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E09",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:11:55.583"},
+    {"title": "Intro", "start": "00:11:55.583", "end": "00:13:12.541"},
+    {"title": "Chapter 2", "start": "00:13:12.541", "end": "00:43:51.648"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 715.583, "end": 792.541}
+   ],
+   "story": [
+    {"start": 0.0, "end": 715.583, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E10",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:09:08.708"},
+    {"title": "Intro", "start": "00:09:08.708", "end": "00:10:25.665"},
+    {"title": "Chapter 2", "start": "00:10:25.665", "end": "00:44:21.504"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 548.708, "end": 625.665}
+   ],
+   "story": [
+    {"start": 0.0, "end": 548.708, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S02E03",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:01:40.018"},
+    {"title": "Scene 01", "start": "00:01:40.018", "end": "00:06:07.351"},
+    {"title": "Intro", "start": "00:06:07.351", "end": "00:07:24.434"},
+    {"title": "Scene 02", "start": "00:07:24.434", "end": "00:53:26.583"},
+    {"title": "Credits", "start": "00:53:26.583", "end": "00:54:29.683"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 100.018},
+    {"type": "Outro", "start": 3206.583, "end": 3269.683}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E04",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:01:31.843"},
+    {"title": "Scene 01", "start": "00:01:31.843", "end": "00:06:44.718"},
+    {"title": "Intro", "start": "00:06:44.718", "end": "00:08:01.759"},
+    {"title": "Scene 02", "start": "00:08:01.759", "end": "00:54:25.541"},
+    {"title": "Credits", "start": "00:54:25.541", "end": "00:55:30.619"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 91.843},
+    {"type": "Outro", "start": 3265.541, "end": 3330.619}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E05",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:49.290"},
+    {"title": "Intro", "start": "00:03:49.290", "end": "00:05:06.375"},
+    {"title": "Chapter 2", "start": "00:05:06.375", "end": "00:49:34.597"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 229.29, "end": 306.375}
+   ],
+   "story": [
+    {"start": 0.0, "end": 229.29, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S02E06",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:02:12.508"},
+    {"title": "Scene 01", "start": "00:02:12.508", "end": "00:05:47.509"},
+    {"title": "Intro", "start": "00:05:47.509", "end": "00:07:04.550"},
+    {"title": "Scene 02", "start": "00:07:04.550", "end": "00:41:58.041"},
+    {"title": "Credits", "start": "00:41:58.041", "end": "00:43:02.121"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 132.508},
+    {"type": "Outro", "start": 2518.041, "end": 2582.121}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E07",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:01:57.535"},
+    {"title": "Scene 01", "start": "00:01:57.535", "end": "00:09:23.451"},
+    {"title": "Intro", "start": "00:09:23.451", "end": "00:10:40.451"},
+    {"title": "Scene 02", "start": "00:10:40.451", "end": "00:50:14.458"},
+    {"title": "Credits", "start": "00:50:14.458", "end": "00:51:17.199"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 117.535},
+    {"type": "Outro", "start": 3014.458, "end": 3077.199}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E08",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:01:40.435"},
+    {"title": "Scene 01", "start": "00:01:40.435", "end": "00:04:14.810"},
+    {"title": "Intro", "start": "00:04:14.810", "end": "00:05:31.851"},
+    {"title": "Scene 02", "start": "00:05:31.851", "end": "00:46:56.458"},
+    {"title": "Credits", "start": "00:46:56.458", "end": "00:48:01.546"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 100.435},
+    {"type": "Outro", "start": 2816.458, "end": 2881.546}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E09",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:01:41.311"},
+    {"title": "Scene 01", "start": "00:01:41.311", "end": "00:11:55.519"},
+    {"title": "Intro", "start": "00:11:55.519", "end": "00:13:12.519"},
+    {"title": "Scene 02", "start": "00:13:12.519", "end": "00:58:59.541"},
+    {"title": "Credits", "start": "00:58:59.541", "end": "01:00:01.723"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 101.311},
+    {"type": "Outro", "start": 3539.541, "end": 3601.723}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E10",
+   "chapters": [
+    {"title": "Studio Logo", "start": "00:00:00.000", "end": "00:00:08.843"},
+    {"title": "Recap", "start": "00:00:08.843", "end": "00:02:11.800"},
+    {"title": "Scene 01", "start": "00:02:11.800", "end": "00:10:29.758"},
+    {"title": "Intro", "start": "00:10:29.758", "end": "00:11:46.800"},
+    {"title": "Scene 02", "start": "00:11:46.800", "end": "00:58:49.000"},
+    {"title": "Credits", "start": "00:58:49.000", "end": "00:59:54.842"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 8.843, "end": 131.8},
+    {"type": "Outro", "start": 3529.0, "end": 3594.842}
+   ],
+   "story": []
+  }
+ ]
+}

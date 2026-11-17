@@ -65,7 +65,7 @@ public class ChapterSegmentWriter(
             List<ContentSegment> incoming =
             [
                 .. classifier
-                    .Classify(source.Chapters, source.LengthRulesApply)
+                    .Classify(source.Chapters, source.IsAnime)
                     .Select(found => ToRow(source, found)),
             ];
 

@@ -20,6 +20,6 @@ namespace NoMercy.MediaProcessing.Segments;
 public sealed record ChapterSource(
     int? EpisodeId,
     int? MovieId,
-    bool LengthRulesApply,
+    bool IsAnime,
     IReadOnlyList<ChapterSpan> Chapters
 );

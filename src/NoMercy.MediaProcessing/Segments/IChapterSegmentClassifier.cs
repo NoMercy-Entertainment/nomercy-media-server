@@ -15,13 +15,15 @@ namespace NoMercy.MediaProcessing.Segments;
 public interface IChapterSegmentClassifier
 {
     /// <param name="chapters">The file's chapters in playback order.</param>
-    /// <param name="lengthRulesApply">
-    /// True for an episode of an anime show. The length rules describe anime
-    /// (a 90 s opening song, a short next-episode preview); on other shows
-    /// they mistake cold opens and post-credit scenes for songs.
+    /// <param name="isAnime">
+    /// True for an episode of an anime show. Anime turns on the length rules
+    /// (a 90 s opening song, a short next-episode preview), which on other
+    /// shows mistake cold opens and post-credit scenes for songs, and makes
+    /// "Intro" an opening only at an opening song's length: anime releases use
+    /// "Intro" for the cold open, western releases for the theme.
     /// </param>
     IReadOnlyList<ClassifiedChapterSegment> Classify(
         IReadOnlyList<ChapterSpan> chapters,
-        bool lengthRulesApply
+        bool isAnime
     );
 }

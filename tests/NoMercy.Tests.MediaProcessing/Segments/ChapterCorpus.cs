@@ -29,6 +29,9 @@ internal static class ChapterCorpus
         "hellsing-2001.json",
         "hellsing-ultimate.json",
         "rick-and-morty-s01-s02.json",
+        "american-dad.json",
+        "silo.json",
+        "hijack.json",
         "western-generic-chapters.json",
     ];
 

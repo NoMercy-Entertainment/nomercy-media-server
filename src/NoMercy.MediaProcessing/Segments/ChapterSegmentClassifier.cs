@@ -18,12 +18,14 @@ namespace NoMercy.MediaProcessing.Segments;
 /// <para>
 /// <b>By title</b> (any show, when at least one title is not generic):
 /// the first opening-titled chapter is the intro, the first recap-titled
-/// chapter the recap. "Intro" is an opening only at 85–95 s; otherwise it is a
-/// cold open and plays. The outro starts at the first ending-titled chapter in
+/// chapter the recap. "Intro" depends on the library: in anime it is an
+/// opening only at 85–95 s, otherwise it is a cold open and plays; elsewhere
+/// it is the theme, an opening at position 1 or 2 and up to 180 s. The outro starts at the first ending-titled chapter in
 /// the second half (or, without one, the first preview-titled chapter there)
 /// and runs through the titled chapters right after it, so "ED" + "Preview"
 /// become one range and an untitled epilogue after the credits still plays.
 /// A last chapter is never an intro or recap: there is nothing to skip to.
+/// A titled preview stays part of the outro, as #503 designs it.
 /// </para>
 /// <para>
 /// <b>By length</b> (anime episodes whose titles are all generic):
@@ -32,7 +34,9 @@ namespace NoMercy.MediaProcessing.Segments;
 /// 85–95 s. A last chapter under 15 s is the next-episode preview; the
 /// 85–125 s chapter right before it (or the last chapter, without a preview)
 /// is the ending, in the second half. Ending + preview are one outro; a
-/// preview alone is not reported.
+/// preview alone is not reported. A length guess ranks below analysis
+/// (ContentSegmentRank), so the #598 analysis corrects the cases where the
+/// "ending" is really a teaser after the credits (Hellsing Ultimate E07).
 /// </para>
 /// </summary>
 public class ChapterSegmentClassifier : IChapterSegmentClassifier
@@ -42,11 +46,13 @@ public class ChapterSegmentClassifier : IChapterSegmentClassifier
     private const double PreviewMaxSeconds = 15;
     private const double EndingMinSeconds = 85;
     private const double EndingMaxSeconds = 125;
+    private const double WesternIntroMaxSeconds = 180;
+    private const int WesternIntroLastIndex = 1;
     private const int MinChaptersForLength = 3;
 
     public IReadOnlyList<ClassifiedChapterSegment> Classify(
         IReadOnlyList<ChapterSpan> chapters,
-        bool lengthRulesApply
+        bool isAnime
     )
     {
         List<ChapterSpan> usable =
@@ -58,18 +64,21 @@ public class ChapterSegmentClassifier : IChapterSegmentClassifier
 
         bool allGeneric = usable.All(c => ChapterTitlePatterns.IsGeneric(c.Title));
         if (!allGeneric)
-            return ByTitle(usable);
+            return ByTitle(usable, isAnime);
 
-        return lengthRulesApply ? ByLength(usable) : [];
+        return isAnime ? ByLength(usable) : [];
     }
 
-    private static List<ClassifiedChapterSegment> ByTitle(List<ChapterSpan> chapters)
+    private static List<ClassifiedChapterSegment> ByTitle(List<ChapterSpan> chapters, bool isAnime)
     {
         List<ClassifiedChapterSegment> found = [];
         int last = chapters.Count - 1;
 
-        int opening = chapters.FindIndex(c => IsOpeningByTitle(c));
-        if (opening >= 0 && opening < last)
+        int opening = -1;
+        for (int i = 0; i < last && opening < 0; i++)
+            if (IsOpeningByTitle(chapters[i], i, isAnime))
+                opening = i;
+        if (opening >= 0)
             found.Add(Segment(ContentSegmentType.Intro, chapters[opening], chapters[opening]));
 
         int recap = chapters.FindIndex(c => ChapterTitlePatterns.IsRecap(c.Title));
@@ -91,9 +100,7 @@ public class ChapterSegmentClassifier : IChapterSegmentClassifier
             while (outroEnd < last && IsOutroTitle(chapters[outroEnd + 1].Title))
                 outroEnd++;
 
-            found.Add(
-                Segment(ContentSegmentType.Outro, chapters[outroStart], chapters[outroEnd])
-            );
+            found.Add(Segment(ContentSegmentType.Outro, chapters[outroStart], chapters[outroEnd]));
         }
 
         return found;
@@ -142,9 +149,17 @@ public class ChapterSegmentClassifier : IChapterSegmentClassifier
         return found;
     }
 
-    private static bool IsOpeningByTitle(ChapterSpan chapter) =>
-        ChapterTitlePatterns.IsOpening(chapter.Title)
-        || (ChapterTitlePatterns.IsIntro(chapter.Title) && IsOpeningLength(chapter));
+    private static bool IsOpeningByTitle(ChapterSpan chapter, int index, bool isAnime)
+    {
+        if (ChapterTitlePatterns.IsOpening(chapter.Title))
+            return true;
+        if (!ChapterTitlePatterns.IsIntro(chapter.Title))
+            return false;
+
+        return isAnime
+            ? IsOpeningLength(chapter)
+            : index <= WesternIntroLastIndex && chapter.Length <= WesternIntroMaxSeconds;
+    }
 
     private static bool IsOutroTitle(string title) =>
         ChapterTitlePatterns.IsEnding(title) || ChapterTitlePatterns.IsAfterEnding(title);

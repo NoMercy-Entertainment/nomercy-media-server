@@ -44,30 +44,99 @@ public class ChapterSegmentClassifierTests
             .Should()
             .ContainSingle()
             .Which.Should()
-            .Be(new ClassifiedChapterSegment(ContentSegmentType.Intro, 60, 90, ChapterSegmentMethod.Title));
+            .Be(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Intro,
+                    60,
+                    90,
+                    ChapterSegmentMethod.Title
+                )
+            );
     }
 
     [Theory]
     [InlineData(85)]
     [InlineData(90)]
     [InlineData(95)]
-    public void Intro_is_the_opening_song_only_at_85_to_95_seconds(double length)
+    public void In_anime_intro_is_the_opening_song_only_at_85_to_95_seconds(double length)
     {
-        Classify(false, ("Intro", length), ("Part A", 600), ("Part B", 600))
+        Classify(true, ("Intro", length), ("Part A", 600), ("Part B", 600))
             .Should()
             .ContainSingle(s => s.Type == ContentSegmentType.Intro);
     }
 
     [Theory]
+    [InlineData(20)]
     [InlineData(28)]
     [InlineData(84)]
     [InlineData(96)]
     [InlineData(227)]
-    public void Intro_of_any_other_length_is_a_cold_open_and_plays(double length)
+    public void In_anime_an_intro_outside_85_to_95_seconds_is_story_and_plays(double length)
     {
-        Classify(false, ("Intro", length), ("Part A", 600), ("Part B", 600))
+        Classify(true, ("OP", 78), ("Intro", length), ("Part A", 600), ("Part B", 600))
             .Should()
-            .BeEmpty();
+            .ContainSingle()
+            .Which.Should()
+            .Be(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Intro,
+                    0,
+                    78,
+                    ChapterSegmentMethod.Title
+                )
+            );
+        Classify(true, ("Intro", length), ("Part A", 600), ("Part B", 600)).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(28)]
+    [InlineData(113)]
+    [InlineData(180)]
+    public void Outside_anime_intro_is_the_theme_at_position_one_or_two_up_to_180_seconds(
+        double length
+    )
+    {
+        Classify(false, ("Intro", length), ("Scene 1", 600), ("Scene 2", 600))
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Be(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Intro,
+                    0,
+                    length,
+                    ChapterSegmentMethod.Title
+                )
+            );
+        Classify(false, ("Scene 1", 77), ("Intro", length), ("Scene 2", 600), ("Scene 3", 600))
+            .Should()
+            .ContainSingle()
+            .Which.StartSeconds.Should()
+            .Be(77);
+    }
+
+    [Fact]
+    public void Outside_anime_an_intro_after_position_two_plays()
+    {
+        Classify(
+                false,
+                ("Studio Logo", 9),
+                ("Recap", 91),
+                ("Scene 01", 267),
+                ("Intro", 77),
+                ("Scene 02", 2762)
+            )
+            .Should()
+            .ContainSingle()
+            .Which.Type.Should()
+            .Be(ContentSegmentType.Recap);
+    }
+
+    [Fact]
+    public void Outside_anime_an_intro_over_180_seconds_plays()
+    {
+        Classify(false, ("Intro", 181), ("Scene 1", 600), ("Scene 2", 600)).Should().BeEmpty();
     }
 
     [Fact]
@@ -75,7 +144,14 @@ public class ChapterSegmentClassifierTests
     {
         Classify(false, ("OP", 90), ("Part A", 600), ("Part B", 600), ("ED", 90), ("Preview", 15))
             .Should()
-            .Contain(new ClassifiedChapterSegment(ContentSegmentType.Outro, 1290, 1395, ChapterSegmentMethod.Title));
+            .Contain(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Outro,
+                    1290,
+                    1395,
+                    ChapterSegmentMethod.Title
+                )
+            );
     }
 
     [Fact]
@@ -85,7 +161,14 @@ public class ChapterSegmentClassifierTests
             .Should()
             .ContainSingle()
             .Which.Should()
-            .Be(new ClassifiedChapterSegment(ContentSegmentType.Outro, 1200, 1230, ChapterSegmentMethod.Title));
+            .Be(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Outro,
+                    1200,
+                    1230,
+                    ChapterSegmentMethod.Title
+                )
+            );
     }
 
     [Fact]
@@ -99,9 +182,7 @@ public class ChapterSegmentClassifierTests
     [Fact]
     public void An_ending_title_in_the_first_half_is_not_the_outro()
     {
-        Classify(false, ("Credits", 30), ("Part 1", 600), ("Part 2", 600))
-            .Should()
-            .BeEmpty();
+        Classify(false, ("Credits", 30), ("Part 1", 600), ("Part 2", 600)).Should().BeEmpty();
     }
 
     [Fact]
@@ -109,21 +190,32 @@ public class ChapterSegmentClassifierTests
     {
         Classify(false, ("Previously On", 45), ("Opening", 30), ("Part 1", 1200))
             .Should()
-            .Contain(new ClassifiedChapterSegment(ContentSegmentType.Recap, 0, 45, ChapterSegmentMethod.Title));
+            .Contain(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Recap,
+                    0,
+                    45,
+                    ChapterSegmentMethod.Title
+                )
+            );
     }
 
     [Fact]
     public void A_last_chapter_is_never_an_intro()
     {
-        Classify(false, ("Part 1", 1200), ("Opening", 90))
-            .Should()
-            .BeEmpty();
+        Classify(false, ("Part 1", 1200), ("Opening", 90)).Should().BeEmpty();
     }
 
     [Fact]
     public void Generic_titles_on_a_non_anime_show_give_nothing()
     {
-        Classify(false, ("Chapter 1", 90), ("Chapter 2", 600), ("Chapter 3", 600), ("Chapter 4", 100))
+        Classify(
+                false,
+                ("Chapter 1", 90),
+                ("Chapter 2", 600),
+                ("Chapter 3", 600),
+                ("Chapter 4", 100)
+            )
             .Should()
             .BeEmpty();
     }
@@ -135,13 +227,26 @@ public class ChapterSegmentClassifierTests
             .Should()
             .ContainSingle()
             .Which.Should()
-            .Be(new ClassifiedChapterSegment(ContentSegmentType.Intro, 0, 90, ChapterSegmentMethod.Length));
+            .Be(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Intro,
+                    0,
+                    90,
+                    ChapterSegmentMethod.Length
+                )
+            );
     }
 
     [Fact]
     public void By_length_a_chapter_before_the_opening_is_a_cold_open()
     {
-        Classify(true, ("Chapter 01", 140), ("Chapter 02", 89), ("Chapter 03", 600), ("Chapter 04", 600))
+        Classify(
+                true,
+                ("Chapter 01", 140),
+                ("Chapter 02", 89),
+                ("Chapter 03", 600),
+                ("Chapter 04", 600)
+            )
             .Should()
             .ContainSingle()
             .Which.StartSeconds.Should()
@@ -151,17 +256,36 @@ public class ChapterSegmentClassifierTests
     [Fact]
     public void By_length_two_opening_sized_chapters_at_the_start_make_the_second_the_opening()
     {
-        Classify(true, ("Chapter 01", 92), ("Chapter 02", 88), ("Chapter 03", 600), ("Chapter 04", 600))
+        Classify(
+                true,
+                ("Chapter 01", 92),
+                ("Chapter 02", 88),
+                ("Chapter 03", 600),
+                ("Chapter 04", 600)
+            )
             .Should()
             .ContainSingle()
             .Which.Should()
-            .Be(new ClassifiedChapterSegment(ContentSegmentType.Intro, 92, 180, ChapterSegmentMethod.Length));
+            .Be(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Intro,
+                    92,
+                    180,
+                    ChapterSegmentMethod.Length
+                )
+            );
     }
 
     [Fact]
     public void By_length_an_opening_sized_chapter_at_position_three_is_story()
     {
-        Classify(true, ("Chapter 01", 120), ("Chapter 02", 300), ("Chapter 03", 90), ("Chapter 04", 600))
+        Classify(
+                true,
+                ("Chapter 01", 120),
+                ("Chapter 02", 300),
+                ("Chapter 03", 90),
+                ("Chapter 04", 600)
+            )
             .Should()
             .BeEmpty();
     }
@@ -169,9 +293,23 @@ public class ChapterSegmentClassifierTests
     [Fact]
     public void By_length_the_ending_and_a_short_last_preview_are_one_outro()
     {
-        Classify(true, ("Chapter 01", 90), ("Chapter 02", 600), ("Chapter 03", 600), ("Chapter 04", 90), ("Chapter 05", 14))
+        Classify(
+                true,
+                ("Chapter 01", 90),
+                ("Chapter 02", 600),
+                ("Chapter 03", 600),
+                ("Chapter 04", 90),
+                ("Chapter 05", 14)
+            )
             .Should()
-            .Contain(new ClassifiedChapterSegment(ContentSegmentType.Outro, 1290, 1394, ChapterSegmentMethod.Length));
+            .Contain(
+                new ClassifiedChapterSegment(
+                    ContentSegmentType.Outro,
+                    1290,
+                    1394,
+                    ChapterSegmentMethod.Length
+                )
+            );
     }
 
     [Theory]
@@ -197,7 +335,13 @@ public class ChapterSegmentClassifierTests
     [Fact]
     public void By_length_a_short_last_chapter_alone_is_not_reported()
     {
-        Classify(true, ("Chapter 01", 300), ("Chapter 02", 600), ("Chapter 03", 600), ("Chapter 04", 10))
+        Classify(
+                true,
+                ("Chapter 01", 300),
+                ("Chapter 02", 600),
+                ("Chapter 03", 600),
+                ("Chapter 04", 10)
+            )
             .Should()
             .BeEmpty();
     }

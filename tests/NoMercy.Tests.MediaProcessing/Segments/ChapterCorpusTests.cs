@@ -93,12 +93,33 @@ public class ChapterCorpusTests
             .Contain([ContentSegmentType.Intro, ContentSegmentType.Outro]);
     }
 
+    [Fact]
+    public void The_western_corpus_keeps_the_intro_titled_themes_web_skips_today()
+    {
+        List<CorpusSeries> western =
+        [
+            .. ChapterCorpus
+                .Files.Select(ChapterCorpus.Load)
+                .Where(s => s.LibraryType != MediaTypes.AnimeMediaType),
+        ];
+
+        western.Sum(s => s.Episodes.Count).Should().Be(122);
+        western
+            .SelectMany(s => s.Episodes)
+            .Count(e =>
+                e.Chapters.Any(c => c.Title == "Intro")
+                && e.Expected.Any(x => x.Type == ContentSegmentType.Intro)
+            )
+            .Should()
+            .Be(57);
+    }
+
     private IReadOnlyList<ClassifiedChapterSegment> Classify(
         CorpusSeries series,
         CorpusEpisode episode
     ) =>
         _classifier.Classify(
             ChapterCorpus.StoredChapters(episode),
-            lengthRulesApply: series.LibraryType == MediaTypes.AnimeMediaType
+            isAnime: series.LibraryType == MediaTypes.AnimeMediaType
         );
 }

@@ -35,8 +35,8 @@ public static class ChapterTitlePatterns
     ];
 
     /// <summary>
-    /// "Intro". Many anime releases use it for a cold open (story), so it counts
-    /// as an opening only at an opening song's length (see the classifier).
+    /// "Intro". Anime releases often use it for a cold open (story), western
+    /// releases for the theme, so the classifier decides it per library.
     /// </summary>
     public const string Intro = "^Intro$";
 
@@ -100,11 +100,11 @@ public static class ChapterTitlePatterns
     }
 
     private static Regex[] Compile(IReadOnlyList<string> patterns) =>
-    [
-        .. patterns.Select(pattern => new Regex(
-            pattern,
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
-            MatchTimeout
-        )),
-    ];
+        [
+            .. patterns.Select(pattern => new Regex(
+                pattern,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                MatchTimeout
+            )),
+        ];
 }
