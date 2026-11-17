@@ -18,6 +18,7 @@ RUN sed -i 's/Components: main/Components: main contrib/' /etc/apt/sources.list.
     libssl3 \
     mediainfo \
     curl \
+    ca-certificates \
     pciutils \
     procps \
     sqlite3 \
