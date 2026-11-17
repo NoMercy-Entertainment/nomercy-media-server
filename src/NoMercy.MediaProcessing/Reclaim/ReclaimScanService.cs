@@ -507,9 +507,15 @@ public sealed class ReclaimScanService : IReclaimScanService
         try
         {
             ReclaimScanResult result = await ScanAsync(ct);
-            Latest = result;
-            State = ReclaimScanState.Completed;
-            LastScannedAt = DateTimeOffset.UtcNow;
+
+            // One lock for all three: a caller that sees Completed must also see
+            // the result and the time it was made, never Completed with no time.
+            lock (_gate)
+            {
+                _latest = result;
+                _lastScannedAt = DateTimeOffset.UtcNow;
+                _state = ReclaimScanState.Completed;
+            }
         }
         catch (Exception ex)
         {

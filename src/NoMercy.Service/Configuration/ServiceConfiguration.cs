@@ -31,6 +31,7 @@ public static partial class ServiceConfiguration
         ConfigureAuth(services);
         ConfigureApi(services);
         ConfigureCors(services);
+        ConfigureBackups(services);
         ConfigureCronJobs(services);
     }
 

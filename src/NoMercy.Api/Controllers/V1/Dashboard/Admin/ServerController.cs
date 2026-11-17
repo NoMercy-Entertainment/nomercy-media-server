@@ -43,6 +43,7 @@ using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.NmSystem.Wallpaper;
 using NoMercy.Providers.AcoustId;
@@ -66,6 +67,7 @@ public partial class ServerController(
     ILogger<ServerController> logger,
     ResourceMonitor resourceMonitor,
     IUpdateChecker updateChecker,
+    IUpdateStatus updateStatus,
     IHostApplicationLifetime appLifetime,
     IServerConfigurationRepository serverConfiguration,
     FileRepository fileRepository,
@@ -101,11 +103,10 @@ public partial class ServerController(
 
     [HttpGet]
     [Route("setup")]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> Setup()
     {
         Guid userId = User.UserId();
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to access the setup");
 
         List<Library> libraries = await libraryRepository.GetLibraries(userId);
 
@@ -135,7 +136,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("start")]
-    [Authorize(Policy = "MediaAccess")]
+    [Authorize(Policy = "Owner")]
     public IActionResult StartServer()
     {
         return NotImplementedResponse("Starting the server via the API is not implemented.");
@@ -200,10 +201,20 @@ public partial class ServerController(
         return Ok(serverWorkload.Read());
     }
 
+    /// <summary>
+    /// Whether an update is available, for every signed-in user. Only a moderator's call
+    /// may make the server ask GitHub again, and then at most once per
+    /// <see cref="UpdateChecker.MinimumRefreshInterval"/>; anyone else reads the last
+    /// known status, which the scheduled check keeps fresh.
+    /// </summary>
     [HttpGet("update/check")]
     public async Task<IActionResult> CheckForUpdate()
     {
-        return Ok(new { updateAvailable = await updateChecker.IsUpdateAvailableAsync() });
+        bool updateAvailable = AuthPolicy.IsModerator(User)
+            ? await updateChecker.RefreshAsync()
+            : updateStatus.UpdateAvailable;
+
+        return Ok(new { updateAvailable });
     }
 
     [HttpPost]
@@ -597,11 +608,10 @@ public partial class ServerController(
 
     [HttpPatch]
     [Route("info")]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> UpdateServerInfo([FromBody] ServerUpdateRequest request)
     {
         Guid userId = User.UserId();
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to update server information");
 
         try
         {

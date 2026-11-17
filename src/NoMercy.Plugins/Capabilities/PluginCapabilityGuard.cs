@@ -29,8 +29,9 @@ public static class PluginCapabilityGuard
     /// asked about when they consented to <paramref name="consented"/>.
     /// <para>
     /// Narrowing what a plugin asks for never needs a new prompt; adding a
-    /// hook, turning on rest/ws, opening a route to anonymous callers, asking
-    /// for a place in the main navigation, or naming a new network host does,
+    /// hook, turning on rest/ws, opening a route to anonymous callers, naming
+    /// a new LAN route, asking for a place in the main navigation, or naming a
+    /// new network host does,
     /// because the owner's earlier "yes" was scoped to a smaller request.
     /// </para>
     /// <para>
@@ -65,6 +66,17 @@ public static class PluginCapabilityGuard
         // from "every route needs a token" to "this one does not" on a consent
         // the owner gave to the first of those.
         if (current.RestAnonymous && consented?.RestAnonymous != true)
+            return true;
+
+        // A LAN route answers a device that never signs in, so each one is its
+        // own ask: consent to a tuner's lineup is not consent to whatever
+        // route a later version adds beside it.
+        List<string> consentedLanRoutes = consented?.Lan?.Routes ?? [];
+        if (
+            (current.Lan?.Routes ?? []).Any(route =>
+                !consentedLanRoutes.Contains(route, StringComparer.OrdinalIgnoreCase)
+            )
+        )
             return true;
 
         // A place in the main navigation is a request the owner answers, so a

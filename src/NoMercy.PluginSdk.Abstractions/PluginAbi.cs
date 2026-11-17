@@ -36,7 +36,17 @@ public static class PluginAbi
     // 12.9 added PluginIndexSignature, the optional signature fields of PluginRepositoryEntry
     // and PluginVersionEntry, and an optional indexSignature parameter on
     // IPluginManager.InstallPluginArchiveAsync (a default member no plugin calls).
-    public static Version Current { get; } = new(12, 9);
+    // 12.10 added PluginCapabilities.Lan (PluginLanCapability, checked by PluginLanRoutes): the
+    // routes a plugin serves to a device on the owner's network that cannot sign in. Additive:
+    // an optional manifest field, absent on every plugin built before it. It also added
+    // PluginLanCaller and PluginControllerBase.LanCaller (the device a LAN route answers), a new
+    // record and a new protected property. No member changed shape: a link minted through
+    // IPluginMediaProxy while a LAN route serves a device is bound to that device.
+    // PluginLanCaller.ToString leaves BaseAddress out, because it carries the credential.
+    // 12.10 also added PluginFilterGraphTokens.StemsSource and StemsVocalSource (two new
+    // constants) and PluginTrackStem.Engine (an init-only property, so the constructor a
+    // plugin was compiled against is still there).
+    public static Version Current { get; } = new(12, 10);
 
     /// <summary>
     /// The oldest major this server can load at all.

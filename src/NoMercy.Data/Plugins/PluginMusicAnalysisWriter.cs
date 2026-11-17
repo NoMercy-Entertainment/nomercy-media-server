@@ -497,6 +497,11 @@ public class PluginMusicAnalysisWriter(
         if (string.IsNullOrWhiteSpace(stem.ProducerVersion))
             return PluginWriteResult.Refused("producer_version must not be empty");
 
+        if (!string.IsNullOrWhiteSpace(stem.Engine) && StemEngineNames.Known(stem.Engine) is null)
+            return PluginWriteResult.Refused(
+                $"engine must be {StemEngineNames.Spleeter} or {StemEngineNames.Roformer}"
+            );
+
         return null;
     }
 
@@ -571,6 +576,9 @@ public class PluginMusicAnalysisWriter(
         existing.SampleRate = stem.SampleRate;
         existing.StorageKey = stem.StorageKey;
         existing.ProducerVersion = stem.ProducerVersion;
+        existing.Engine = string.IsNullOrWhiteSpace(stem.Engine)
+            ? StemEngineNames.FromProducerVersion(stem.ProducerVersion)
+            : StemEngineNames.Known(stem.Engine);
         existing.CreatedAt = DateTime.UtcNow;
     }
 

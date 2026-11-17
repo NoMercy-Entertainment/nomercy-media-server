@@ -52,15 +52,11 @@ public class CastTokenController(
         if (user is null || !(user.Allowed || user.Owner))
             return UnauthorizedResponse("This user may not use this server");
 
-        // The device hub lists a TV by its row Ulid; older callers send the client device id.
-        Device? tv = await deviceRepository.GetByClientDeviceIdAsync(deviceId);
-        if (tv is null && Ulid.TryParse(deviceId, out Ulid rowId))
-            tv = await deviceRepository.GetByIdAsync(rowId);
+        Device? tv = await deviceRepository.GetOwnedDeviceAsync(deviceId, userId, "tv");
         if (tv is null)
-            return NotFoundResponse($"No device '{deviceId}' found");
-
-        if (tv.OwnerUserId != userId || tv.Type != "tv")
-            return UnauthorizedResponse("This device is not in your device list");
+            return await deviceRepository.GetByClientOrRowIdAsync(deviceId) is null
+                ? NotFoundResponse($"No device '{deviceId}' found")
+                : UnauthorizedResponse("This device is not in your device list");
 
         if (string.IsNullOrWhiteSpace(tv.Fingerprint))
             return StatusCode(

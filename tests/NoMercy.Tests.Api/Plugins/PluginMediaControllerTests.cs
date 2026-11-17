@@ -15,6 +15,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Moq;
 using NoMercy.Api.Controllers.V1.Plugins;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.PluginSdk;
@@ -193,6 +194,35 @@ public class PluginMediaControllerTests
         media.Opened.Should().BeNull();
     }
 
+    /// <summary>
+    /// A device's link is for the device, on the LAN. Signed in or not, an
+    /// account never plays it on the user route.
+    /// </summary>
+    [Fact]
+    public async Task A_device_ticket_never_plays_on_the_user_route()
+    {
+        PluginMediaTicketMinter minter = Minter(TimeProvider.System);
+        string ticket = minter.MintForDevice(
+            LiveTv,
+            "tuner",
+            new() { Links = [new() { Url = new("https://iptv.example.com/1.m3u8") }] },
+            PluginMediaProxy.TicketLifetime
+        );
+
+        foreach (Guid account in new[] { Viewer, Guid.Empty })
+        {
+            IActionResult result = await Controller(minter, account).Media(LiveTv, ticket, default);
+
+            result
+                .Should()
+                .BeOfType<ObjectResult>()
+                .Which.Value.Should()
+                .BeOfType<DataResponseDto<PluginRefusal>>()
+                .Which.Data!.Code.Should()
+                .Be(PluginRefusalCodes.MediaTicketUserMismatch);
+        }
+    }
+
     private static PluginMediaTicketMinter Minter(TimeProvider clock) =>
         new(clock, "a-server-key-that-is-long-enough-for-hmac"u8.ToArray());
 
@@ -209,7 +239,13 @@ public class PluginMediaControllerTests
         Guid? asking = null,
         IPluginMediaFactory? media = null
     ) =>
-        new(minter, new EveryoneHasAccess(), media ?? new PlaylistMedia())
+        new(
+            minter,
+            new EveryoneHasAccess(),
+            media ?? new PlaylistMedia(),
+            new(new InMemoryLanDeviceStore(), TimeProvider.System, minter),
+            Mock.Of<IPluginManager>()
+        )
         {
             ControllerContext = new ControllerContext
             {

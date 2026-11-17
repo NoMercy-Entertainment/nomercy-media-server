@@ -39,7 +39,7 @@ public class PluginLanDeviceTests
     {
         (PluginLanDeviceMinter minter, _) = Build();
 
-        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
 
         minter.Resolve(Iptv, device.DeviceId, device.Credential).Should().NotBeNull();
     }
@@ -48,7 +48,7 @@ public class PluginLanDeviceTests
     public void An_unknown_credential_is_refused()
     {
         (PluginLanDeviceMinter minter, _) = Build();
-        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
 
         minter
             .Refuse(Iptv, device.DeviceId, "not-the-credential")!
@@ -60,7 +60,7 @@ public class PluginLanDeviceTests
     public void An_unknown_device_is_refused()
     {
         (PluginLanDeviceMinter minter, _) = Build();
-        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
 
         minter.Refuse(Iptv, "never-added", device.Credential).Should().NotBeNull();
     }
@@ -69,7 +69,7 @@ public class PluginLanDeviceTests
     public void A_revoked_credential_stops_working_immediately()
     {
         (PluginLanDeviceMinter minter, InMemoryStore store) = Build();
-        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
 
         store.Revoke(Iptv, device.DeviceId);
 
@@ -80,10 +80,60 @@ public class PluginLanDeviceTests
     }
 
     [Fact]
+    public void Revoking_through_the_minter_stops_the_credential_at_once()
+    {
+        (PluginLanDeviceMinter minter, _) = Build();
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
+
+        minter.Revoke(Iptv, device.DeviceId);
+
+        minter.Resolve(Iptv, device.DeviceId, device.Credential).Should().BeNull();
+        minter.IsActive(Iptv, device.DeviceId).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Revoking_a_device_fires_the_signal_its_open_requests_hold()
+    {
+        (PluginLanDeviceMinter minter, _) = Build();
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
+        CancellationToken open = minter.RevocationOf(Iptv, device.DeviceId);
+
+        open.IsCancellationRequested.Should().BeFalse();
+
+        minter.Revoke(Iptv, device.DeviceId);
+
+        open.IsCancellationRequested.Should().BeTrue("a stream it has open is cut there and then");
+    }
+
+    [Fact]
+    public void Revoking_one_device_leaves_the_others_reading()
+    {
+        (PluginLanDeviceMinter minter, _) = Build();
+        PluginLanDeviceMinted living = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted bedroom = minter.Mint(Iptv, "Bedroom TV");
+        CancellationToken bedroomOpen = minter.RevocationOf(Iptv, bedroom.DeviceId);
+
+        minter.Revoke(Iptv, living.DeviceId);
+
+        bedroomOpen.IsCancellationRequested.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_request_that_raced_the_revocation_gets_a_signal_that_already_fired()
+    {
+        (PluginLanDeviceMinter minter, InMemoryStore store) = Build();
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
+        store.Revoke(Iptv, device.DeviceId);
+
+        minter.RevocationOf(Iptv, device.DeviceId).IsCancellationRequested.Should().BeTrue();
+        minter.RevocationOf(Iptv, "never-added").IsCancellationRequested.Should().BeTrue();
+    }
+
+    [Fact]
     public void A_credential_from_one_plugin_does_not_open_another()
     {
         (PluginLanDeviceMinter minter, _) = Build();
-        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
 
         minter.Refuse(Other, device.DeviceId, device.Credential).Should().NotBeNull();
     }
@@ -126,7 +176,7 @@ public class PluginLanDeviceTests
     {
         (PluginLanDeviceMinter minter, _) = Build();
 
-        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        PluginLanDeviceMinted device = minter.Mint(Iptv, "Living room TV");
 
         device.Name.Should().Be("Living room TV");
         typeof(PluginLanDevice)
@@ -134,9 +184,41 @@ public class PluginLanDeviceTests
             .Select(property => property.Name)
             .Should()
             .BeEquivalentTo(
-                ["PluginId", "DeviceId", "Name", "Credential", "CreatedAt", "Revoked"],
+                ["PluginId", "DeviceId", "Name", "CredentialHash", "CreatedAt", "Revoked"],
                 "a row that carried a user id would make a tuner a record of who watched"
             );
+    }
+
+    [Fact]
+    public void The_store_is_handed_a_hash_and_never_the_credential()
+    {
+        (PluginLanDeviceMinter minter, InMemoryStore store) = Build();
+
+        PluginLanDeviceMinted minted = minter.Mint(Iptv, "Living room TV");
+        PluginLanDevice stored = store.Find(Iptv, minted.DeviceId)!;
+
+        stored.CredentialHash.Should().Be(PluginLanDeviceMinter.HashOf(minted.Credential));
+        stored.CredentialHash.Should().NotContain(minted.Credential);
+    }
+
+    [Fact]
+    public void Printing_a_device_never_prints_its_credential()
+    {
+        (PluginLanDeviceMinter minter, InMemoryStore store) = Build();
+        PluginLanDeviceMinted minted = minter.Mint(Iptv, "Living room TV");
+        PluginLanDevice stored = store.Find(Iptv, minted.DeviceId)!;
+        PluginLanCaller caller = new(
+            minted.DeviceId,
+            minted.Name,
+            new(
+                $"http://192.168.1.2:7626/api/v1/plugins/{Iptv}/lan/{minted.DeviceId}/{minted.Credential}/"
+            )
+        );
+
+        minted.ToString().Should().NotContain(minted.Credential).And.Contain(minted.DeviceId);
+        stored.ToString().Should().NotContain(stored.CredentialHash).And.Contain("Living room TV");
+        caller.ToString().Should().NotContain(minted.Credential).And.Contain(minted.DeviceId);
+        $"{new { caller }}".Should().NotContain(minted.Credential);
     }
 
     private sealed class InMemoryStore : IPluginLanDeviceStore

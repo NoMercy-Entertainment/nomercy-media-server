@@ -36,4 +36,12 @@ public sealed record PluginMediaTicket(
     /// plugin hands over can make the server serve a file.
     /// </summary>
     public string? FilePath { get; init; }
+
+    /// <summary>
+    /// Set when the ticket was minted for a device on the owner's network,
+    /// while a LAN route was serving it, rather than for an account. Such a
+    /// ticket plays only on the LAN media route, and <see cref="UserId" /> is
+    /// empty.
+    /// </summary>
+    public string? DeviceId { get; init; }
 }

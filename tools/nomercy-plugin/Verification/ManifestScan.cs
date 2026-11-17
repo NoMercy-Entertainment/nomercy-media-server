@@ -138,6 +138,20 @@ public static class ManifestScan
                     )
                 );
 
+        // The server refuses to load a manifest with any of these, so the scan
+        // refuses it too rather than passing a plugin that cannot install.
+        foreach (string problem in PluginLanRoutes.Problems(manifest.Capabilities))
+            findings.Add(
+                new PluginRefusal(
+                    PluginRefusalCodes.ManifestInvalid,
+                    who,
+                    problem,
+                    "A LAN route answers a device that cannot sign in, so the server serves only routes it can read exactly as the owner did.",
+                    "Name each route relative to the plugin's prefix, as its controller writes it. Docs: docs/plugins/lan-routes.md",
+                    PluginRefusalSeverity.Blocked
+                )
+            );
+
         foreach (PluginUiMount mount in manifest.Capabilities?.Ui?.Mounts ?? [])
         {
             if (!PluginKind.IsKnown(mount.Kind))

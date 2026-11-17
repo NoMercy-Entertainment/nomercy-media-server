@@ -207,14 +207,13 @@ public class UsersController(
     }
 
     [HttpPatch("{id:guid}/permissions")]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> UserPermissionUpdate(
         Guid id,
         [FromBody] UserPermissionRequest request
     )
     {
         Guid userId = User.UserId();
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to update a user");
 
         if (User.IsSelf(id))
             return UnauthorizedResponse(

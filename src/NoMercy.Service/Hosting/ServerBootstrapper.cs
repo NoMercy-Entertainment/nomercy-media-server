@@ -11,6 +11,7 @@
 
 using System.Diagnostics;
 using System.Reflection;
+using NoMercy.Data.ServerBackups;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Certificate;
 using NoMercy.Networking.Discovery;
@@ -26,11 +27,14 @@ using NoMercy.Setup.Server;
 using NoMercy.Setup.Ui;
 using NoMercy.Storage;
 using NoMercyQueue;
+using Serilog.Events;
 
 namespace NoMercy.Service.Hosting;
 
 public sealed class ServerBootstrapper
 {
+    private ServerInstanceLock? _instanceLock;
+
     public async Task RunAsync(StartupOptions options)
     {
         switch (options.RunAsService)
@@ -63,7 +67,8 @@ public sealed class ServerBootstrapper
         options.ApplySettings();
 
         // A restart relaunched this process: the old server still holds the ports.
-        if (!ServerRestartPlan.WaitForPreviousServer())
+        bool previousServerStopped = ServerRestartPlan.WaitForPreviousServer();
+        if (!previousServerStopped)
             Logger.App(
                 $"The previous server did not exit within {ServerRestartPlan.WaitCap.TotalSeconds:0} seconds"
             );
@@ -88,6 +93,30 @@ public sealed class ServerBootstrapper
         // Pre-DI storage pair — used for seed calls that run before the DI
         // container is built. Same pattern as Start.cs Binaries task.
         (IStorage preBootStorage, IStorageDriver preBootBackend) = BootstrapStorageFactory.Create();
+        BackupOptions backupOptions = BackupOptions.ForAppFiles();
+        SqliteFileOperations sqliteFiles = new();
+
+        // A restore asked for before the restart goes in now: nothing has opened a
+        // database yet, and the process that held them has exited.
+        // The instance lock is held for the life of this process. Without it,
+        // another server may be running on the same data (no restart PID to wait
+        // for), and its files must not be swapped under it.
+        ServerInstanceLockAttempt lockAttempt = ServerInstanceLock.TryAcquire(
+            preBootBackend,
+            AppFiles.DataPath
+        );
+        _instanceLock = lockAttempt.Lock;
+        string? holdBackReason = RestoreHoldBackReason(previousServerStopped, lockAttempt);
+        if (lockAttempt.Lock is null)
+            Logger.App(
+                $"{holdBackReason} A pending restore waits until the data folder can be locked.",
+                LogEventLevel.Warning
+            );
+
+        await ApplyPendingRestoreAsync(
+            CreateRestoreApplier(preBootBackend, sqliteFiles, backupOptions),
+            holdBackReason
+        );
 
         // Folders, then schema, then Phase 1 — in that order. Phase 1's
         // UserSettings task reads the Configuration table, so on a fresh install
@@ -98,7 +127,16 @@ public sealed class ServerBootstrapper
 
         // Create a database schema before anything else can query it.
         // This does NOT require auth — only migrations + EnsureCreated.
-        await DatabaseSeeder.InitSchema(preBootStorage);
+        await DatabaseSeeder.InitSchema(
+            preBootStorage,
+            new PreMigrationBackup(
+                preBootBackend,
+                sqliteFiles,
+                backupOptions,
+                TimeProvider.System,
+                new SetupLogger<PreMigrationBackup>()
+            )
+        );
 
         // Phase 1 (UserSettings, CreateAppFolders, ApiInfo) — fast, no network
         await Start.InitEssential();
@@ -363,6 +401,75 @@ public sealed class ServerBootstrapper
                 await retryServerRunner.RunHost(retryHost);
             }
         }
+    }
+
+    /// <summary>
+    /// Why this start must not swap files, or null when it may. Only a lock held
+    /// by another process means another server; any other failure to lock is
+    /// reported as itself, and holds the restore back all the same.
+    /// </summary>
+    internal static string? RestoreHoldBackReason(
+        bool previousServerStopped,
+        ServerInstanceLockAttempt lockAttempt
+    ) =>
+        !previousServerStopped
+            ? "The server process this one replaces had not exited, so its files could still be open."
+        : lockAttempt.Lock is not null ? null
+        : lockAttempt.HeldElsewhere ? "Another server process holds the data folder."
+        : $"The data folder could not be locked ({lockAttempt.Problem}), so another server "
+            + "process using it cannot be ruled out.";
+
+    private static RestoreApplier CreateRestoreApplier(
+        IStorageDriver storage,
+        ISqliteFileOperations sqlite,
+        BackupOptions options
+    )
+    {
+        BackupDatabaseSchema schema = new();
+        return new(
+            storage,
+            sqlite,
+            new BackupSetVerifier(storage, sqlite, schema, options),
+            schema,
+            new BackupSetWriter(
+                storage,
+                sqlite,
+                options,
+                TimeProvider.System,
+                new SetupLogger<BackupSetWriter>()
+            ),
+            new DriveVolumeInspector(storage),
+            options,
+            TimeProvider.System,
+            new SetupLogger<RestoreApplier>()
+        );
+    }
+
+    /// <summary>
+    /// Applies a pending restore, all or nothing. A restore that cannot finish and
+    /// cannot be undone stops the start: the server never runs on half a backup.
+    /// </summary>
+    internal static async Task ApplyPendingRestoreAsync(
+        IRestoreApplier applier,
+        string? holdBackReason
+    )
+    {
+        RestoreResult? result = await applier.ApplyPendingAsync(
+            holdBackReason,
+            CancellationToken.None
+        );
+        if (result is null)
+            return;
+
+        if (result.Status == RestoreStatus.RollbackIncomplete)
+            throw new StartupAbortException($"A restore could not be undone. {result.Message}");
+
+        Logger.Setup(
+            $"Restore of backup {result.BackupId}: {result.Status}. {result.Message}",
+            result.Status == RestoreStatus.Applied
+                ? LogEventLevel.Information
+                : LogEventLevel.Warning
+        );
     }
 
     internal static async Task RestorePortRetryStateAsync(IServiceProvider services)

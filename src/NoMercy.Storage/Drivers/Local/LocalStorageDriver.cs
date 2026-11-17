@@ -189,6 +189,87 @@ public sealed class LocalStorageDriver : IStorageDriver
 
     public bool TryMarkSparse(string path) => SparseFile.TryMark(path);
 
+    public void ReplaceFile(string source, string destination)
+    {
+        ServerWriteLedger.Shared.Note(Path.GetFullPath(source));
+        ServerWriteLedger.Shared.Note(Path.GetFullPath(destination));
+        // One rename (MoveFileEx with MOVEFILE_REPLACE_EXISTING, rename(2) on Unix).
+        File.Move(source, destination, overwrite: true);
+    }
+
+    public UnixFileMode? TryGetUnixMode(string path)
+    {
+        if (OperatingSystem.IsWindows() || (!File.Exists(path) && !Directory.Exists(path)))
+            return null;
+
+        try
+        {
+            return File.GetUnixFileMode(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    public bool TrySetUnixMode(string path, UnixFileMode mode)
+    {
+        if (OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            File.SetUnixFileMode(path, mode);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    public bool TryRestrictToOwner(string path)
+    {
+        if (OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                File.SetUnixFileMode(
+                    path,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                );
+                return true;
+            }
+
+            if (File.Exists(path))
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                return true;
+            }
+
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     public string? ResolveLinkTarget(string path)
     {
         try

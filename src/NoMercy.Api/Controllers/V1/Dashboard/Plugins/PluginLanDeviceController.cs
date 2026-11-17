@@ -72,7 +72,9 @@ public class PluginLanDeviceController(
                 "A device needs a name, so you know which one you are revoking later"
             );
 
-        PluginLanDevice device = minter.Mint(id, request.Name.Trim());
+        // The only time the credential exists outside the device: the store
+        // keeps a hash, so this answer is the owner's one chance to copy it.
+        PluginLanDeviceMinted device = minter.Mint(id, request.Name.Trim());
 
         return Ok(
             new DataResponseDto<PluginLanDeviceMintedDto>
@@ -94,7 +96,9 @@ public class PluginLanDeviceController(
         if (store.Find(id, deviceId) is null)
             return NotFoundResponse("This plugin has no such device");
 
-        store.Revoke(id, deviceId);
+        // Through the minter rather than the store, so a stream the device
+        // still has open is cut now rather than when it ends.
+        minter.Revoke(id, deviceId);
 
         return Ok(
             new StatusResponseDto<string>

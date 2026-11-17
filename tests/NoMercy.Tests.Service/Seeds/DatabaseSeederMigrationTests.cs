@@ -14,8 +14,11 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Logging.Abstractions;
+using NoMercy.Data.ServerBackups;
 using NoMercy.Database;
 using NoMercy.Service.Seeds;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.Service.Seeds;
 
@@ -94,10 +97,20 @@ public sealed class DatabaseSeederMigrationTests
             AppContext.BaseDirectory,
             $"seeder-backup-{Guid.NewGuid():N}"
         );
-        string originalBackupRoot = DatabaseBackupService.BackupRoot;
+        PreMigrationBackup preMigrationBackup = new(
+            new LocalStorageDriver(),
+            new SqliteFileOperations(),
+            new BackupOptions
+            {
+                BackupRoot = backupRoot,
+                ConfigRoot = backupRoot,
+                Databases = [],
+            },
+            TimeProvider.System,
+            NullLogger<PreMigrationBackup>.Instance
+        );
         try
         {
-            DatabaseBackupService.BackupRoot = backupRoot;
             DbContextOptionsBuilder<MediaContext> builder = new();
             builder.UseSqlite($"Data Source={databasePath};Pooling=False");
             await using MediaContext context = new(builder.Options);
@@ -116,7 +129,7 @@ public sealed class DatabaseSeederMigrationTests
             )!;
             try
             {
-                await (Task)method.Invoke(null, [context])!;
+                await (Task)method.Invoke(null, [context, preMigrationBackup])!;
             }
             catch (TargetInvocationException exception) when (exception.InnerException is not null)
             {
@@ -127,7 +140,6 @@ public sealed class DatabaseSeederMigrationTests
         }
         finally
         {
-            DatabaseBackupService.BackupRoot = originalBackupRoot;
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (File.Exists(databasePath))
                 File.Delete(databasePath);

@@ -11,6 +11,7 @@
 
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
@@ -41,6 +42,134 @@ public class WorkerSelfRegistrationServiceTests
         await sut.StopAsync(CancellationToken.None);
 
         handler.RequestLog.Should().BeEmpty();
+    }
+
+    // CoordinatorUrl now comes from configuration, so a typo must not take the
+    // whole server down: new Uri() threw inside ExecuteAsync, and a faulted
+    // ExecuteAsync stops the host (BackgroundServiceExceptionBehavior.StopHost).
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("coordinator.example:7626")]
+    [InlineData("ftp://coordinator.example")]
+    public async Task ExecuteAsync_CoordinatorUrlNotAnHttpUrl_StaysOffWithoutThrowing(
+        string coordinatorUrl
+    )
+    {
+        RecordingHandler handler = new();
+        WorkerSelfRegistrationService sut = MakeService(
+            handler,
+            opts =>
+            {
+                opts.DistributedEncodingSigningKey = "key";
+                opts.CoordinatorUrl = coordinatorUrl;
+                opts.WorkerSelfBaseUrl = "http://worker.test";
+            }
+        );
+
+        await sut.StartAsync(CancellationToken.None);
+        Func<Task> run = () => sut.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
+        await run.Should().NotThrowAsync("the service must log and stay off, not fault");
+        await sut.StopAsync(CancellationToken.None);
+
+        handler.RequestLog.Should().BeEmpty();
+    }
+
+    // The id travels in the heartbeat and unregister paths; anything outside
+    // [A-Za-z0-9._-] would need escaping there, and "." or ".." would be collapsed.
+    [Theory]
+    [InlineData("rack 2")]
+    [InlineData("ünit")]
+    [InlineData("a/b")]
+    [InlineData("..")]
+    public async Task ExecuteAsync_WorkerIdNotUrlSafe_StaysOffWithoutThrowing(string workerId)
+    {
+        RecordingHandler handler = new();
+        WorkerSelfRegistrationService sut = MakeService(
+            handler,
+            opts =>
+            {
+                opts.DistributedEncodingSigningKey = "key";
+                opts.CoordinatorUrl = "http://coordinator.test";
+                opts.WorkerSelfBaseUrl = "http://worker.test";
+                opts.WorkerId = workerId;
+            }
+        );
+
+        await sut.StartAsync(CancellationToken.None);
+        Func<Task> run = () => sut.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
+        await run.Should().NotThrowAsync("the service must log and stay off, not fault");
+        await sut.StopAsync(CancellationToken.None);
+
+        handler.RequestLog.Should().BeEmpty();
+    }
+
+    // Without a trailing slash, resolving "api/v1/..." against "/nomercy" would
+    // drop the prefix and miss the coordinator.
+    [Fact]
+    public async Task ExecuteAsync_CoordinatorUnderAPathPrefix_KeepsThePrefix()
+    {
+        TaskCompletionSource registerSeen = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RecordingHandler handler = new(respond: req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/register", StringComparison.Ordinal))
+                registerSeen.TrySetResult();
+            return new(HttpStatusCode.OK);
+        });
+        WorkerSelfRegistrationService sut = MakeService(
+            handler,
+            opts =>
+            {
+                opts.DistributedEncodingSigningKey = "key";
+                opts.CoordinatorUrl = "http://coordinator.test/nomercy";
+                opts.WorkerSelfBaseUrl = "http://worker.test";
+                opts.WorkerId = "tw";
+                opts.WorkerHeartbeatInterval = TimeSpan.FromMinutes(5);
+            }
+        );
+
+        using CancellationTokenSource cts = new();
+        await sut.StartAsync(cts.Token);
+        await registerSeen.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await cts.CancelAsync();
+        await sut.StopAsync(CancellationToken.None);
+
+        handler
+            .RequestLog.Should()
+            .Contain(r => r.Path == "/nomercy/api/v1/distribution/workers/register");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CoordinatorUrlWithAPassword_NeverLogsIt()
+    {
+        TaskCompletionSource registerSeen = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RecordingHandler handler = new(respond: req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/register", StringComparison.Ordinal))
+                registerSeen.TrySetResult();
+            return new(HttpStatusCode.OK);
+        });
+        CapturingLogger logger = new();
+        WorkerSelfRegistrationService sut = MakeService(
+            handler,
+            opts =>
+            {
+                opts.DistributedEncodingSigningKey = "key";
+                opts.CoordinatorUrl = "http://operator:s3cret@coordinator.test";
+                opts.WorkerSelfBaseUrl = "http://worker.test";
+                opts.WorkerId = "tw";
+                opts.WorkerHeartbeatInterval = TimeSpan.FromMinutes(5);
+            },
+            logger
+        );
+
+        using CancellationTokenSource cts = new();
+        await sut.StartAsync(cts.Token);
+        await registerSeen.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await cts.CancelAsync();
+        await sut.StopAsync(CancellationToken.None);
+
+        logger.Messages.Should().Contain(m => m.Contains("http://coordinator.test/"));
+        logger.Messages.Should().NotContain(m => m.Contains("s3cret") || m.Contains("operator"));
     }
 
     [Fact]
@@ -168,7 +297,9 @@ public class WorkerSelfRegistrationServiceTests
         // OperationCanceledException. It must not escape TryRegisterAsync
         // uncaught — the service's own stoppingToken was never asked to
         // cancel, so the ExecuteAsync loop must carry on to the heartbeat.
-        TaskCompletionSource heartbeatSeen = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource heartbeatSeen = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
         RecordingHandler handler = new(respond: req =>
         {
             if (req.RequestUri!.ToString().Contains("register"))
@@ -214,7 +345,8 @@ public class WorkerSelfRegistrationServiceTests
 
     private static WorkerSelfRegistrationService MakeService(
         RecordingHandler handler,
-        Action<EncoderOptions> configure
+        Action<EncoderOptions> configure,
+        ILogger<WorkerSelfRegistrationService>? logger = null
     )
     {
         EncoderOptions opts = new();
@@ -233,7 +365,7 @@ public class WorkerSelfRegistrationServiceTests
             provider.GetRequiredService<IHardwareCapabilities>(),
             opts,
             provider.GetRequiredService<IHttpClientFactory>(),
-            NullLogger<WorkerSelfRegistrationService>.Instance
+            logger ?? NullLogger<WorkerSelfRegistrationService>.Instance
         );
     }
 
@@ -277,6 +409,37 @@ public class WorkerSelfRegistrationServiceTests
                 return true;
             string path = req.RequestUri!.AbsolutePath;
             return okOn.Any(pattern => path.Contains(pattern));
+        }
+    }
+
+    private sealed class CapturingLogger : ILogger<WorkerSelfRegistrationService>
+    {
+        private readonly List<string> _messages = [];
+
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_messages)
+                    return [.. _messages];
+            }
+        }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
+        {
+            lock (_messages)
+                _messages.Add(formatter(state, exception));
         }
     }
 }

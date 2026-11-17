@@ -72,6 +72,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Hooks;
 using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.Providers.AniDb.Client;
 using NoMercy.Providers.AniList;
 using NoMercy.Providers.Jikan;
@@ -196,7 +197,7 @@ public static partial class ServiceConfiguration
         services.AddSingleton(auditLog);
         EventBusProvider.Configure(eventBus);
 
-        services.AddSingleton<IApiKeyStore>(_ => ApiKeyStore.ForHost());
+        services.AddApiKeys();
         services.AddSingleton<IAniDbService, AniDbService>();
         int aniListRequestIntervalMs = configuration.GetValue(
             "Providers:AniList:RequestIntervalMs",
@@ -213,7 +214,6 @@ public static partial class ServiceConfiguration
             jikanRequestIntervalMs
         ));
         services.AddSingleton<ILyricsAggregator, LyricsAggregator>();
-        services.AddSingleton<IApiKeyLoader, ApiKeyLoader>();
         services.AddSingleton<IServerRegistrationService, ServerRegistrationService>();
         services.AddSingleton<IUserProvisioningService, UserProvisioningService>();
         services.AddSingleton<IDegradedModeRecovery, DegradedModeRecovery>();
@@ -688,6 +688,10 @@ public static partial class ServiceConfiguration
             sp.GetRequiredService<IStorage>()
         ));
 
+        // The stemsplit filter's RoFormer models: 3.4 GB, fetched only on a
+        // machine whose hardware detection reports a GPU (#637).
+        services.AddHostedService<StemsplitRoformerModelService>();
+
         services.AddNoMercyEncoder(opts =>
         {
             opts.FfmpegPathOverride = AppFiles.FfmpegPath;
@@ -704,6 +708,12 @@ public static partial class ServiceConfiguration
             // Pointing at AppFiles.SpeedIndexCachePath persists results so
             // NeedsRecalibration() can honour its 30-day grace window.
             opts.SpeedIndexCachePath = AppFiles.SpeedIndexCachePath;
+            // Coordinator and remote-worker settings (docs/distributed-encoding.md).
+            EncoderDistributionSettings.Apply(
+                configuration,
+                opts,
+                warning => Logger.App(warning, LogEventLevel.Warning)
+            );
         });
 
         // Routes on-demand OCR model pulls through the signed nomercy-tesseract release
@@ -829,6 +839,11 @@ public static partial class ServiceConfiguration
         // platform's own answer is nobody, and a media link cannot be minted
         // because there is no account to bind it to.
         services.AddSingleton<IPluginCallerAccessor, HttpPluginCallerAccessor>();
+
+        // Which LAN device is asking, so a media link minted while a LAN route
+        // serves it is bound to that device rather than refused for having no
+        // account to bind to.
+        services.AddSingleton<IPluginLanCallerAccessor, HttpPluginLanCallerAccessor>();
 
         // This host maps /pluginHub, so an access answer reaches every device
         // the person is signed in on rather than nobody.

@@ -19,7 +19,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using NoMercy.Api.Middleware;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
@@ -69,6 +68,61 @@ public class HmacSigningHandlerTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    // The handler sees the escaped path (%20, %C3%BC); ASP.NET Core hands the
+    // middleware the decoded one. Both sides must agree on what was signed.
+    [Fact]
+    public async Task PathThatNeedsEscaping_SignedByTheHandler_PassesTheMiddleware()
+    {
+        using IHost host = StartCoordinator();
+        using HttpClient client = BuildWorkerClient(host, tamper: false);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "api/v1/distribution/workers/rack 2 ünit+1/heartbeat",
+            new { available_cpu_threads = 4 }
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected the escaped path to verify, got {(int)response.StatusCode}: {body}"
+        );
+    }
+
+    // A reverse proxy serving the coordinator under /nomercy strips the prefix,
+    // so the coordinator checks the path without it.
+    [Fact]
+    public async Task CoordinatorBehindAPathPrefix_SignedByTheHandler_PassesTheMiddleware()
+    {
+        using IHost host = StartCoordinator();
+        TestServer server = host.GetTestServer();
+        Uri coordinatorUrl = new(server.BaseAddress, "nomercy/");
+        HmacSigningHandler signing = new(
+            new()
+            {
+                DistributedEncodingSigningKey = Secret,
+                CoordinatorUrl = coordinatorUrl.ToString(),
+            }
+        )
+        {
+            InnerHandler = new PrefixStrippingProxy("/nomercy")
+            {
+                InnerHandler = server.CreateHandler(),
+            },
+        };
+        using HttpClient client = new(signing) { BaseAddress = coordinatorUrl };
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "api/v1/distribution/workers/register",
+            new { worker_id = "worker-1", base_url = "https://worker.example" }
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected the prefixed request to verify, got {(int)response.StatusCode}: {body}"
+        );
+    }
+
     [Fact]
     public async Task BodyChangedAfterSigning_IsRejectedByTheMiddleware()
     {
@@ -92,10 +146,8 @@ public class HmacSigningHandlerTests
             {
                 web.UseTestServer();
                 web.ConfigureServices(services =>
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(
-                            new() { DistributedEncodingSigningKey = Secret }
-                        )
+                    services.AddSingleton(
+                        new EncoderOptions { DistributedEncodingSigningKey = Secret }
                     )
                 );
                 web.Configure(app =>
@@ -142,6 +194,22 @@ public class HmacSigningHandlerTests
                 Encoding.UTF8,
                 "application/json"
             );
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
+
+    /// <summary>Removes a path prefix on the way in, like a reverse proxy would.</summary>
+    private sealed class PrefixStrippingProxy(string prefix) : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            UriBuilder target = new(request.RequestUri!);
+            if (target.Path.StartsWith(prefix + "/", StringComparison.Ordinal))
+                target.Path = target.Path[prefix.Length..];
+            request.RequestUri = target.Uri;
             return base.SendAsync(request, cancellationToken);
         }
     }

@@ -48,6 +48,7 @@ public class EncoderController(
     /// </remarks>
     [Obsolete("Use POST /api/v1/encoder/profiles")]
     [HttpPost]
+    [Authorize(Policy = "Moderator")]
     public Task<IActionResult> Create()
     {
         // V2.5 default-profile authoring lived here before the V2 migration

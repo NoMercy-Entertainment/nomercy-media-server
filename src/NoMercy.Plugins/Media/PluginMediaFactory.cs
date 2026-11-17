@@ -12,6 +12,7 @@
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.Storage;
@@ -37,7 +38,8 @@ public class PluginMediaFactory(
     ILoggerFactory loggers,
     PluginQuotaMeter? quotas = null,
     string? pluginsRoot = null,
-    IStorage? files = null
+    IStorage? files = null,
+    IPluginLanCallerAccessor? lanCaller = null
 ) : IPluginMediaFactory
 {
     public IPluginMedia CreateFor(Ulid pluginId) =>
@@ -72,7 +74,8 @@ public class PluginMediaFactory(
             pluginsRoot is null
                 ? null
                 : Path.Combine(pluginsRoot, "data", pluginId.ToString()),
-            files
+            files,
+            lanCaller
         );
     }
 }

@@ -140,14 +140,24 @@ internal sealed class PluginAudioRenderFiles(
             .ToList();
 
     /// <summary>
+    /// Removes the temporary files of a run that will be run again, so the
+    /// next ffmpeg finds nothing in the way: a stemsplit run that refused
+    /// RoFormer may already have opened them.
+    /// </summary>
+    public void RemoveTempFiles()
+    {
+        foreach (PluginAudioRenderTarget target in targets)
+            TryDelete(target.TempPath);
+    }
+
+    /// <summary>
     /// Removes whatever the run did not give a real name: the temporary
     /// files, and after a run that kept nothing, the folders it made for
     /// them. Safe to call on every way out.
     /// </summary>
     public void Cleanup()
     {
-        foreach (PluginAudioRenderTarget target in targets)
-            TryDelete(target.TempPath);
+        RemoveTempFiles();
 
         if (_committed)
             return;

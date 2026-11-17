@@ -304,6 +304,45 @@ public class CastControlTokenMintTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task AnotherUsersDeviceNamedLikeTheTvsRowId_DoesNotShadowTheOwnersTv()
+    {
+        string fp = "placeholder-fp-shadow-" + Guid.NewGuid().ToString("N");
+        (Ulid rowId, string deviceId) = await SeedTvWithRowIdAsync(
+            TestAuthHandler.DefaultUserId,
+            fp
+        );
+        await using (MediaContext db = new())
+        {
+            db.Devices.Add(
+                new()
+                {
+                    DeviceId = rowId.ToString(),
+                    Type = "tv",
+                    Name = "Placeholder TV",
+                    OwnerUserId = TestAuthHandler.SecondaryUserId,
+                    Fingerprint = "placeholder-fp-other",
+                }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage response = await _factory
+            .CreateClient()
+            .AsAuthenticated()
+            .PostAsync(Url(rowId.ToString()), null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        JsonElement body = JsonDocument
+            .Parse(await response.Content.ReadAsStringAsync())
+            .RootElement;
+        Assert.Equal(deviceId, body.GetProperty("device_id").GetString());
+        Assert.Equal(
+            fp,
+            Part(body.GetProperty("token").GetString()!, 1).GetProperty("fp").GetString()
+        );
+    }
+
+    [Fact]
     public async Task RowId_OfAnotherUsersTv_IsForbidden()
     {
         (Ulid rowId, _) = await SeedTvWithRowIdAsync(

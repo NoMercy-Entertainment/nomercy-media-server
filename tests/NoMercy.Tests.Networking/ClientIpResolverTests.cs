@@ -266,4 +266,68 @@ public class ClientIpResolverTests
         TrustedProxyList.Parse(raw, out List<string> rejected).Should().BeEmpty();
         rejected.Should().BeEmpty();
     }
+
+    /// <summary>
+    /// The check behind the LAN plugin routes: a device that connected itself
+    /// from a private address, and nothing a relay or a caller could write.
+    /// </summary>
+    [Theory]
+    [InlineData("192.168.1.20", true)]
+    [InlineData("10.0.0.7", true)]
+    [InlineData("172.16.4.2", true)]
+    [InlineData("::ffff:192.168.1.20", true)]
+    [InlineData("fd00::12", true)]
+    [InlineData("127.0.0.1", false)]
+    [InlineData("::1", false)]
+    [InlineData("81.171.28.44", false)]
+    [InlineData("172.32.0.1", false)]
+    [InlineData("8.8.8.8", false)]
+    [InlineData("::ffff:192.168.1.5", true)]
+    [InlineData("::ffff:8.8.8.8", false)]
+    [InlineData("fd12:3456::1", true)]
+    [InlineData("fe80::1", true)]
+    [InlineData("2001:4860:4860::8888", false)]
+    [InlineData("100.64.0.1", false)]
+    [InlineData("100.100.100.100", false)]
+    [InlineData("100.127.255.254", false)]
+    [InlineData("100.63.255.255", false)]
+    [InlineData("100.128.0.1", false)]
+    public void IsDirectLanCaller_AnswersOnlyAPrivatePeerThatIsNotThisMachine(
+        string peer,
+        bool expected
+    )
+    {
+        ContextFrom(peer).IsDirectLanCaller().Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("X-Forwarded-For", "192.168.1.30")]
+    [InlineData("x-forwarded-for", "192.168.1.30")]
+    [InlineData("X-Forwarded-Proto", "http")]
+    [InlineData("X-Forwarded-Host", "tv.local")]
+    [InlineData("X-Real-IP", "192.168.1.30")]
+    [InlineData("Forwarded", "for=192.168.1.30")]
+    [InlineData("Via", "1.1 relay")]
+    [InlineData("CF-Connecting-IP", "192.168.1.30")]
+    [InlineData("CF-Ray", "8a1b2c3d4e5f")]
+    public void IsDirectLanCaller_RefusesARequestThatCameThroughARelay(string header, string value)
+    {
+        ContextFrom("192.168.1.20", (header, value)).IsDirectLanCaller().Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The shared range stays private for everything else, such as not
+    /// banning a Tailscale peer; only the LAN gate leaves it out.
+    /// </summary>
+    [Fact]
+    public void IsPrivateNetwork_StillCountsTheSharedRangeForItsOtherCallers()
+    {
+        ClientIpResolver.IsPrivateNetwork(IPAddress.Parse("100.64.0.1")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsDirectLanCaller_RefusesARequestWithNoAddress()
+    {
+        new DefaultHttpContext().IsDirectLanCaller().Should().BeFalse();
+    }
 }

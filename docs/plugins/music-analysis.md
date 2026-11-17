@@ -90,9 +90,12 @@ if (!result.Ran)
 ```
 
 - The literal token `{stemsModel}` is replaced by the host with the
-  stemsplit model's file name before the graph runs — a plugin never learns
+  Spleeter model's file name before the graph runs — a plugin never learns
   the path, and the process runs with the ffmpeg folder as its working
-  directory so a bare file name resolves.
+  directory so a bare file name resolves. `stemsplit={stemsSource}` (ABI
+  12.10) lets the host choose the engine instead: RoFormer where this
+  machine's GPU runs it, Spleeter elsewhere, with the fall back handled by
+  the host; see "Stems with RoFormer" in [lyrics.md](lyrics.md).
 - `Complex: false` runs the text as `-af <text> -f null -`, a single input to
   a single output — fine for a one-filter measurement such as
   `"ebur128=metadata=1"`.
@@ -113,7 +116,8 @@ if (!result.Ran)
   own data folder: `PluginAudioInput.PluginFile(relativePath)` (ABI 12.7).
 - One ffmpeg run at a time per plugin; a second call while one is running is
   refused rather than queued. A 10-minute timeout applies on top of your own
-  cancellation token.
+  cancellation token, except while a RoFormer stem split is running; see
+  "A RoFormer stem split" below.
 
 ### `SplitStemsAsync`
 
@@ -152,6 +156,12 @@ there is no separate `RegisterStemAsync` call to make for it (that member
 exists for `IPluginMusicAnalysisWriter`'s own callers, described below).
 `stemSet` is `PluginStemSet.Two` today (vocals + accompaniment);
 `PluginStemSet.Four` is reserved and currently refused.
+
+The engine is the server's choice. On a machine whose GPU the stemsplit
+filter takes, the split runs RoFormer's `preset=full`; everywhere else, and
+whenever the filter refuses RoFormer on this machine, it runs Spleeter, in the
+same call. The stems' `ProducerVersion` says which: `roformer-full@…` or
+`spleeter-2stems-f16@…`.
 
 ### `RenderAsync` — keeping the audio a graph produces
 
@@ -261,6 +271,37 @@ longest stretch a filter works before it hands anything on. A stall limit under
 ten seconds is raised to ten, twice the time between two reports, and one above
 sixty minutes is clamped to sixty. `RunFilterGraphAsync` ignores `StallTimeout`:
 that run prints no progress report to judge it by.
+
+#### A RoFormer stem split: judged by the filter's chunks
+
+A run whose graph splits with RoFormer (a source token that became a RoFormer
+preset, or a `preset=`, `models=`, `vocals_models=` or `accompaniment_models=`
+of the plugin's own) is timed differently, in all three calls. No fixed total
+holds it: a four-minute song takes about four minutes on an RTX 3070 and about
+25 on a GTX 1060, after up to a minute of loading models. ffmpeg's position
+does not help either, because RoFormer hands its audio on a whole chunk at a
+time. The filter prints a line for every chunk it finishes, and the host
+follows those:
+
+- Until the filter has handed out its last chunk, the run is ended only when
+  no chunk line came for **five minutes**, counted from the start so a load
+  that never finishes counts too. `Timeout` and `StallTimeout` do not apply
+  in this phase, so the run may outlast them.
+- After the last chunk, the rest of the run gets the limits it would have had
+  without RoFormer, counted from that moment: your `Timeout` (or the ten
+  minutes), and for a render your `StallTimeout` too.
+- A run ended for want of chunk lines comes back as `StalledExitCode` (`-3`);
+  `SplitStemsAsync` refuses with `"stemsplit made no progress: RoFormer handed
+  out no chunk for 300 seconds, and the run was ended"`.
+
+The chunk lines are at ffmpeg's default log level, `info`; a graph run with a
+quieter `-loglevel` cannot be followed this way, so do not lower it.
+
+One RoFormer run holds the GPU at a time, across every plugin and the stems
+job: the four models of `preset=full` take 5.4 GB on an RTX 3070, so two runs
+do not fit on most cards. A second run waits for the first to finish before
+its ffmpeg starts, and the wait does not count against its limits. Spleeter
+runs never wait.
 
 ## `IPluginDerivedAudio` — the derived-audio store
 
@@ -474,8 +515,19 @@ Three independent version numbers, each owned by a different thing:
 
 `ProducerVersion` is a free-form string you choose; `SplitStemsAsync` builds
 its own as `"{model name}@{ffmpeg version token}"` (for example
-`spleeter-2stems-f16@9.0-NoMercy-MediaServer`) when it writes stems through
-the built-in path, so use the same shape if you register stems yourself.
+`spleeter-2stems-f16@9.0-NoMercy-MediaServer`, or `roformer-full@…` for a
+RoFormer split) when it writes stems through the built-in path, so use the
+same shape if you register stems yourself.
+
+Each stem also carries the engine that made it, `PluginTrackStem.Engine`
+(ABI 12.10): `"spleeter"` or `"roformer"`. `SplitStemsAsync` sets it; a stem
+you register yourself may set it (any other name is refused with `"engine must
+be spleeter or roformer"`), and without it the register reads it from a
+producer version in the shape above, or leaves it null. Stems stored before
+12.10 by the server's own split read `"spleeter"`. A sweep that wants better
+stems on a machine that now runs RoFormer looks for `Engine == "spleeter"` in
+`GetStemsAsync` and splits those tracks again; the new rows land next to the
+old ones, which stay until the derived-audio store evicts them.
 
 ## Refusals: what they mean and what to do
 

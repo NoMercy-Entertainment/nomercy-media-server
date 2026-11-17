@@ -160,7 +160,9 @@ the graph runs:
 
 | token | becomes |
 |---|---|
-| `{stemsModel}` | the stemsplit model's file name |
+| `{stemsModel}` | the Spleeter model's file name, always |
+| `{stemsSource}` | the whole stemsplit source: RoFormer `preset=full:cpu_fallback=0` where this machine runs it, `model=` and the Spleeter file elsewhere (ABI 12.10) |
+| `{stemsVocalSource}` | the same with RoFormer's `preset=vocal_full`: two models instead of four (ABI 12.10) |
 | `{whisperModel}` | the whisper model's file name |
 | `{vadModel}` | the silero VAD model's file name |
 | `{alignModel}` | the lyricsalign model's file name (ABI 12.8) |
@@ -176,6 +178,58 @@ filter's stdout, not `pipe:1`, whose colon would need escaping.
 `PluginAudioRunOptions.Timeout` is how long the run may take: null is the
 server's ten minutes, anything above sixty is clamped to sixty. A five-minute
 track through whisper large-v3 on a CPU takes about twelve.
+
+## Stems with RoFormer: `{stemsSource}` and `{stemsVocalSource}`
+
+The stemsplit filter has two engines. Spleeter is small and runs on the CPU
+in seconds. RoFormer separates far better, but only a GPU makes it usable:
+per minute of music it takes about a minute on an RTX 3070, six to seven on a
+GTX 1060 3GB, and most of an hour on a CPU. `{stemsModel}` is Spleeter and
+stays Spleeter. Write a source token instead, and the server picks the engine
+for the machine it runs on:
+
+```csharp
+"[0:a]stemsplit={stemsVocalSource}:stem=all[v][b];[v][b]lyricsalign=…"
+```
+
+The token stands for all of the filter's source options, so write it right
+after `stemsplit=` and put your own options (`stem=`, …) after it.
+
+- **Which preset.** `{stemsSource}` is RoFormer's `preset=full`: four models,
+  the best of both stems. `{stemsVocalSource}` is `preset=vocal_full`: the two
+  vocals models, with the accompaniment as the mixture minus the vocals. For
+  lyric alignment it gives the same line times with half the memory (2.5 GB
+  instead of 4.6 GB asked of the card), so it also runs on cards that cannot
+  hold all four. Use it whenever only the vocals matter.
+- **Who decides.** The server only downloads the RoFormer models on a machine
+  whose hardware detection reports a GPU. Whether RoFormer then runs is the
+  filter's own verdict: the token carries `cpu_fallback=0`, and the filter
+  refuses a run whose models do not all get a GPU instead of computing on the
+  CPU for an hour.
+- **The fall back is the server's.** When the filter refuses, the server runs
+  your same graph again with Spleeter, in the same call, and remembers the
+  answer for this machine until its ffmpeg build, its GPUs or a GPU driver
+  change. Your callbacks see one run: the refused run's lines are held back and
+  dropped. A refusal for want of memory only counts for that preset, so a card
+  that refused `{stemsSource}` may still run `{stemsVocalSource}`.
+- **Not next to whisper.** RoFormer switches the GPU backend of the whole
+  ffmpeg process to full precision, and whisper on the GPU in that process
+  runs about 3.5 times slower. A graph with a `whisper` filter in it therefore
+  gets Spleeter for its source tokens. For RoFormer vocals under whisper, run
+  two graphs: `RenderAsync` the vocals into your folder with
+  `{stemsVocalSource}`, then transcribe that file
+  (`PluginAudioInput.PluginFile`) in a second run.
+- **The model.** A source token needs the Spleeter model on the server, like
+  `{stemsModel}`, because Spleeter is the fall back; it is installed on every
+  server.
+- **The time-out follows the filter.** While RoFormer splits, your `Timeout`
+  is not what ends the run: the server ends it only when the filter handed out
+  no chunk for five minutes. Once the split is done, your `Timeout` holds again
+  for the rest of the run, counted from that moment. So `3 × the track + 5
+  minutes` is fine to keep; it no longer cuts off a slow card. See "A RoFormer
+  stem split" in [music-analysis.md](music-analysis.md).
+- **One at a time on the GPU.** A RoFormer run waits while another one, of
+  any plugin or of the server's own stems job, holds the GPU.
 
 ## Aligning a text the server already has
 

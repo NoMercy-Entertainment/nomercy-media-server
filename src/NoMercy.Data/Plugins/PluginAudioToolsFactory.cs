@@ -39,6 +39,8 @@ namespace NoMercy.Data.Plugins;
 /// <param name="derivedStorage">Scoped to the derived-audio root, for stem scratch files and derived inputs.</param>
 /// <param name="quotas">The plugin platform's disk meter, which a render's files are counted against. Null on a host that meters nothing.</param>
 /// <param name="alignModelInstaller">Fetches the lyricsalign model the first time a graph names it. Null on a host that installs nothing.</param>
+/// <param name="stemsplitSources">Chooses RoFormer or Spleeter for every plugin's stem splits on this machine.</param>
+/// <param name="roformerGpuSlot">The GPU's one place for a RoFormer run, shared by every plugin and the stems job.</param>
 public class PluginAudioToolsFactory(
     EncoderOptions options,
     IProcessRunner processRunner,
@@ -49,6 +51,8 @@ public class PluginAudioToolsFactory(
     IPluginMusicAnalysisWriterFactory writerFactory,
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
+    IStemsplitSourceSelector stemsplitSources,
+    IRoformerGpuSlot roformerGpuSlot,
     ILogger<PluginAudioTools> logger,
     PluginQuotaMeter? quotas = null,
     ILyricsAlignModelInstaller? alignModelInstaller = null
@@ -70,6 +74,8 @@ public class PluginAudioToolsFactory(
                 writerFactory,
                 contextFactory,
                 capabilityProbe,
+                stemsplitSources,
+                roformerGpuSlot,
                 logger,
                 dataFolderPath,
                 quotas,

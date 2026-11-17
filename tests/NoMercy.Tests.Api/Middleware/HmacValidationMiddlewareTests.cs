@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using Moq;
 using NoMercy.Api.Middleware;
 using NoMercy.Encoder.Composition;
@@ -32,15 +31,22 @@ public class HmacValidationMiddlewareTests
 {
     private const string Secret = "test-hmac-secret-middleware";
 
+    // The terminal handler reports HmacValidationMiddleware.IsVerified in this header.
+    private const string VerifiedHeader = "X-Test-Hmac-Verified";
+
+    // The terminal handler reports how many body bytes it could still read.
+    private const string BodyLengthHeader = "X-Test-Body-Length";
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Builds a minimal test pipeline:
-    ///   HmacValidationMiddleware → terminal that returns 200 OK.
+    ///   HmacValidationMiddleware → terminal that returns 200 OK and says, in
+    ///   <see cref="VerifiedHeader"/>, whether the middleware marked the request verified.
     /// </summary>
-    private static HttpClient BuildClient(string? configuredSecret)
+    private static HttpClient BuildClient(string? configuredSecret, long? maxBodyBytes = null)
     {
         IHost host = new HostBuilder()
             .ConfigureWebHost(web =>
@@ -48,21 +54,28 @@ public class HmacValidationMiddlewareTests
                 web.UseTestServer();
                 web.ConfigureServices(services =>
                 {
-                    EncoderOptions opts = new()
-                    {
-                        DistributedEncodingSigningKey = configuredSecret,
-                    };
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(opts)
+                    services.AddSingleton(
+                        new EncoderOptions { DistributedEncodingSigningKey = configuredSecret }
                     );
+                    if (maxBodyBytes is { } limit)
+                        services.Configure<HmacValidationOptions>(o => o.MaxBodyBytes = limit);
                 });
                 web.Configure(app =>
                 {
                     app.UseMiddleware<HmacValidationMiddleware>();
-                    app.Run(ctx =>
+                    app.Run(async ctx =>
                     {
+                        // Read the body the way a controller would: proves the
+                        // middleware rewound it after checking the signature.
+                        using MemoryStream body = new();
+                        await ctx.Request.Body.CopyToAsync(body);
+
                         ctx.Response.StatusCode = 200;
-                        return ctx.Response.WriteAsync("ok");
+                        ctx.Response.Headers[VerifiedHeader] = HmacValidationMiddleware
+                            .IsVerified(ctx)
+                            .ToString();
+                        ctx.Response.Headers[BodyLengthHeader] = body.Length.ToString();
+                        await ctx.Response.WriteAsync("ok");
                     });
                 });
             })
@@ -91,12 +104,8 @@ public class HmacValidationMiddlewareTests
                 web.UseTestServer();
                 web.ConfigureServices(services =>
                 {
-                    EncoderOptions opts = new()
-                    {
-                        DistributedEncodingSigningKey = configuredSecret,
-                    };
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(opts)
+                    services.AddSingleton(
+                        new EncoderOptions { DistributedEncodingSigningKey = configuredSecret }
                     );
                     services.AddSingleton(licenseTokenClient.Object);
                 });
@@ -293,6 +302,110 @@ public class HmacValidationMiddlewareTests
     }
 
     // -------------------------------------------------------------------------
+    // Tests: the verified mark that WorkersController's HmacSignedOrOwner reads
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ValidSignature_MarksTheRequestVerified()
+    {
+        HttpClient client = BuildClient(Secret);
+
+        byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"worker_id\":\"w\"}");
+        (long ts, string sig) = MakeSignature(
+            "POST",
+            "/api/v1/distribution/workers/register",
+            bodyBytes,
+            Secret
+        );
+
+        HttpRequestMessage request = new(HttpMethod.Post, "/api/v1/distribution/workers/register")
+        {
+            Content = new ByteArrayContent(bodyBytes),
+        };
+        request.Headers.Add("X-NoMercy-Timestamp", ts.ToString());
+        request.Headers.Add("X-NoMercy-Signature", sig);
+
+        HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(bool.TrueString, response.Headers.GetValues(VerifiedHeader).Single());
+    }
+
+    // Exempt and unprotected paths pass without a signature, so they must never
+    // look signed to an action that trusts the mark.
+    [Theory]
+    [InlineData("/api/v1/distribution/workers/worker-1/tasks/task-abc/progress")]
+    [InlineData("/api/v1/dashboard/workers/register")]
+    public async Task UncheckedPath_IsNotMarkedVerified(string path)
+    {
+        HttpClient client = BuildClient(Secret);
+
+        HttpResponseMessage response = await client.PostAsync(path, new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(bool.FalseString, response.Headers.GetValues(VerifiedHeader).Single());
+    }
+
+    // -------------------------------------------------------------------------
+    // Tests: body size cap (the body is read before the caller is known)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task BodyAtTheLimit_IsVerified_AndStillReadableDownstream()
+    {
+        HttpClient client = BuildClient(Secret, maxBodyBytes: 1024);
+        byte[] bodyBytes = new byte[1024];
+        (long ts, string sig) = MakeSignature("POST", "/api/v1/worker/tasks", bodyBytes, Secret);
+
+        HttpRequestMessage request = new(HttpMethod.Post, "/api/v1/worker/tasks")
+        {
+            Content = new ByteArrayContent(bodyBytes),
+        };
+        request.Headers.Add("X-NoMercy-Timestamp", ts.ToString());
+        request.Headers.Add("X-NoMercy-Signature", sig);
+
+        HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("1024", response.Headers.GetValues(BodyLengthHeader).Single());
+    }
+
+    // Dummy headers are enough to reach the body read, so the cap must hold
+    // whether or not the request announces its length.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BodyOverTheLimit_WithDummySignature_Returns413(bool announceLength)
+    {
+        HttpClient client = BuildClient(Secret, maxBodyBytes: 1024);
+        byte[] bodyBytes = new byte[200_000];
+
+        HttpRequestMessage request = new(HttpMethod.Post, "/api/v1/worker/tasks")
+        {
+            Content = announceLength
+                ? new ByteArrayContent(bodyBytes)
+                : new StreamContent(new UnknownLengthStream(bodyBytes)),
+        };
+        request.Headers.Add(
+            "X-NoMercy-Timestamp",
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
+        );
+        request.Headers.Add("X-NoMercy-Signature", "dummy");
+
+        HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        JsonDocument json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("payload_too_large", json.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void DefaultBodyLimit_IsOneMebibyte()
+    {
+        Assert.Equal(1024 * 1024, new HmacValidationOptions().MaxBodyBytes);
+    }
+
+    // -------------------------------------------------------------------------
     // Tests: progress-push exemption
     // -------------------------------------------------------------------------
 
@@ -446,5 +559,13 @@ public class HmacValidationMiddlewareTests
             c => c.IntrospectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
+    }
+
+    /// <summary>A body whose length is unknown up front, so it goes out without Content-Length.</summary>
+    private sealed class UnknownLengthStream(byte[] data) : MemoryStream(data)
+    {
+        public override bool CanSeek => false;
+
+        public override long Length => throw new NotSupportedException();
     }
 }

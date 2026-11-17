@@ -259,6 +259,112 @@ public sealed class ApiKeyLoaderTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadKeys_WhileARetryIsWaiting_TriesOnceButStartsNoSecondRetry()
+    {
+        // The bootstrapper, the boot orchestrator, the host start and degraded-mode
+        // recovery all ask one loader for keys. Each ask still tries the API at once,
+        // but one retry loop per loader is enough: a second one only doubles the calls.
+        int waits = 0;
+        TaskCompletionSource firstWait = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using LoopbackHttpServer server = FastFailingServer();
+        using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
+        ApiKeyLoader loader = BuildLoader(
+            delay: (_, ct) =>
+            {
+                Interlocked.Increment(ref waits);
+                firstWait.TrySetResult();
+                return Task.Delay(Timeout.Infinite, ct);
+            }
+        );
+
+        await loader.LoadKeys(_stop.Token);
+        await firstWait.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await loader.LoadKeys(_stop.Token);
+        await loader.LoadKeys(_stop.Token);
+
+        // Room for a second loop, if one were started, to reach its wait.
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal(3, server.RequestCount);
+        Assert.Equal(1, Volatile.Read(ref waits));
+    }
+
+    [Fact]
+    public async Task A_retry_that_wakes_to_keys_fetched_elsewhere_does_not_ask_again()
+    {
+        await SeedCacheFile(ApiInfoJson("cached-token", cachedAt: DateTime.UtcNow.ToString("O")));
+
+        // No keys from the API yet, so the first loader runs on the cache and waits to retry.
+        using LoopbackHttpServer server = new();
+        server.Handler = _ => new(200, ApiInfoJson(tmdbToken: string.Empty));
+        using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
+
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ApiKeyLoader first = BuildLoader(
+            delay: async (_, ct) =>
+            {
+                waiting.TrySetResult();
+                await release.Task.WaitAsync(ct);
+            }
+        );
+        await first.LoadKeys(_stop.Token);
+        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // A loader of a later host shares the store and gets the keys from the API.
+        server.Handler = _ => new(200, ApiInfoJson("fresh-tmdb-token"));
+        ApiKeyLoader later = BuildLoader(delay: (_, _) => Task.CompletedTask);
+        await later.LoadKeys(_stop.Token);
+
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+        while (_apiKeyStore.TmdbToken != "fresh-tmdb-token" && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.Equal("fresh-tmdb-token", _apiKeyStore.TmdbToken);
+        int asked = server.RequestCount;
+
+        release.TrySetResult();
+
+        // Room for the first loop, if it went on, to ask the API once more.
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+
+        Assert.Equal(asked, server.RequestCount);
+    }
+
+    [Fact]
+    public async Task LoadKeys_StoppedDuringAHungFetch_ReturnsWithoutWaitingForTheTimeout()
+    {
+        using ManualResetEventSlim answer = new();
+        TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using LoopbackHttpServer server = new();
+        server.Handler = _ =>
+        {
+            asked.TrySetResult();
+            answer.Wait(TimeSpan.FromSeconds(30));
+            return new(400, "too late");
+        };
+        using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
+        using CancellationTokenSource cts = new();
+        ApiKeyLoader loader = BuildLoader();
+
+        try
+        {
+            Task loading = loader.LoadKeys(cts.Token);
+            await asked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await cts.CancelAsync();
+
+            // The HTTP client gives each try 5 seconds; a stopped fetch must not wait for it.
+            await loading.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        finally
+        {
+            answer.Set();
+        }
+
+        Assert.False(_apiKeyStore.KeysLoaded);
+    }
+
+    [Fact]
     public async Task LoadKeys_NoCacheDirectoryYet_DoesNotThrowWhenWritingCache()
     {
         using LoopbackHttpServer server = new();

@@ -73,10 +73,22 @@ public class AnonymousEndpointAllowListTests : IClassFixture<NoMercyApiFactory>
         // Worker progress: HMAC-exempt by spec; a spoofed progress bar is the worst case.
         "POST api/v{version:apiVersion}/dashboard/workers/{workerId}/tasks/{taskId}/progress [Workers.ReceiveProgress]",
         "POST api/v{version:apiVersion}/distribution/workers/{workerId}/tasks/{taskId}/progress [Workers.ReceiveProgress]",
+        // Worker register/heartbeat/unregister: [HmacSignedOrOwner] admits a signed worker,
+        // otherwise the owner only; the unsigned /dashboard/ alias stays owner-only.
+        "DELETE api/v{version:apiVersion}/dashboard/workers/{workerId} [Workers.Unregister]",
+        "DELETE api/v{version:apiVersion}/distribution/workers/{workerId} [Workers.Unregister]",
+        "POST api/v{version:apiVersion}/dashboard/workers/register [Workers.Register]",
+        "POST api/v{version:apiVersion}/dashboard/workers/{workerId}/heartbeat [Workers.Heartbeat]",
+        "POST api/v{version:apiVersion}/distribution/workers/register [Workers.Register]",
+        "POST api/v{version:apiVersion}/distribution/workers/{workerId}/heartbeat [Workers.Heartbeat]",
         // Inbound webhook: gated inside by the intake token check.
         "POST api/v{version:apiVersion}/intake/webhook [IntakeWebhook.Webhook]",
         // LAN device credential: refuses any caller outside the private network.
         "GET api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential} [PluginLan.Device]",
+        // A device-bound media link: direct LAN callers only, ticket bound to the device.
+        "GET api/v{version:apiVersion}/plugins/{id:ulid}/lan-media/{ticket} [PluginMedia.LanMedia]",
+        // LAN routes a plugin's manifest names: same network and credential check.
+        "GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}/{**path} [PluginLan.Forward]",
         // Public key a TV checks a cast control token against; holds no secret.
         "GET api/v{version:apiVersion}/cast/keys [CastToken.Keys]",
         // public today; under review

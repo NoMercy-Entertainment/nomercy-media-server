@@ -18,9 +18,10 @@ namespace NoMercy.Tests.Plugins;
 
 /// <summary>
 /// A revocation names one build, not a plugin, and a server that cannot check
-/// pauses rather than guessing. Both matter: the first so a publisher's fix
-/// installs without an appeal, the second so "we could not ask" never reads as
-/// "nothing was revoked".
+/// pauses its marketplace plugins rather than guessing. Both matter: the first
+/// so a publisher's fix installs without an appeal, the second so "we could not
+/// ask" never reads as "nothing was revoked". A sideloaded plugin has no stored
+/// package hash, so a stale list does not pause it (#65).
 /// </summary>
 public class PluginRevocationGateTests
 {
@@ -91,13 +92,34 @@ public class PluginRevocationGateTests
     }
 
     [Fact]
-    public void A_list_eight_days_old_pauses_every_plugin_including_free_ones()
+    public void A_list_eight_days_old_pauses_a_marketplace_plugin_free_ones_included()
     {
         PluginRefusal? refusal = Gate(Aged(8)).Check(Radio, Hash, Installed);
 
         refusal!.Code.Should().Be(PluginRefusalCodes.RevocationListStale);
         refusal.Why.Should().Contain("7 days");
         refusal.Fix.Should().Contain("nothing you approved was lost");
+    }
+
+    [Fact]
+    public void A_list_eight_days_old_leaves_a_sideloaded_plugin_running()
+    {
+        Gate(Aged(8))
+            .Check(Radio, null, Installed)
+            .Should()
+            .BeNull("no revocation can name a build that has no stored package hash");
+    }
+
+    [Fact]
+    public void A_blank_stored_hash_counts_as_no_hash()
+    {
+        Gate(Aged(8)).Check(Radio, "  ", Installed).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_fresh_list_allows_a_sideloaded_plugin()
+    {
+        Gate(Aged(0.04)).Check(Radio, null, Installed).Should().BeNull();
     }
 
     [Fact]
@@ -116,6 +138,23 @@ public class PluginRevocationGateTests
             .Check(Radio, Hash, Installed)!
             .Code.Should()
             .Be(PluginRefusalCodes.RevocationListStale);
+    }
+
+    [Fact]
+    public void A_server_that_has_never_heard_leaves_a_sideloaded_plugin_running()
+    {
+        Gate(PluginRevocationList.None).Check(Radio, null, Installed).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_sideloaded_build_a_revocation_names_is_still_refused_on_a_stale_list()
+    {
+        PluginRevocationEntry byVersion = new(Torrent, "1.0.0", null, "plugins.revoked.security");
+
+        Gate(Aged(30, byVersion))
+            .Check(Torrent, null, Installed)!
+            .Code.Should()
+            .Be(PluginRefusalCodes.Revoked);
     }
 
     [Fact]

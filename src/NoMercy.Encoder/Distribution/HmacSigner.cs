@@ -42,7 +42,9 @@ public sealed class HmacSigner(string secret)
     /// Verifies a signature against the expected one derived from the request primitives.
     /// Returns false when:
     /// - the signature does not match (wrong key, tampered body, wrong method/path),
-    /// - or the timestamp is older than <paramref name="replayWindow"/> (replay attack protection).
+    /// - or the timestamp is more than <paramref name="replayWindow"/> away from now, in
+    ///   either direction. The past side limits replays; the future side lets a signer
+    ///   whose clock runs a little ahead of this machine through.
     /// </summary>
     public bool Verify(
         string method,
@@ -54,9 +56,11 @@ public sealed class HmacSigner(string secret)
     )
     {
         long nowSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        long ageSeconds = nowSeconds - timestamp;
+        long windowSeconds = (long)replayWindow.TotalSeconds;
 
-        if (ageSeconds < 0 || ageSeconds > (long)replayWindow.TotalSeconds)
+        // Compared as bounds, not as |now - timestamp|: the timestamp comes from a
+        // request header, and a value near long.MinValue would overflow the subtraction.
+        if (timestamp < nowSeconds - windowSeconds || timestamp > nowSeconds + windowSeconds)
             return false;
 
         string expected = Sign(method, path, timestamp, body);

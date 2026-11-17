@@ -43,6 +43,12 @@ public class ApiKeyStore : IApiKeyStore
     public string TvdbKey { get; internal set; } = string.Empty;
     public bool KeysLoaded { get; internal set; }
 
+    /// <summary>
+    /// True once the keys came from the API in this process; false while they are only
+    /// the on-disk cache, which may hold keys rotated since it was written.
+    /// </summary>
+    internal bool KeysFromNetwork { get; set; }
+
     public string[] Colors { get; } =
     [
         "#CBAFFF",

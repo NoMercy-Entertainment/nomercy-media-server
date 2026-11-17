@@ -22,7 +22,12 @@ using NoMercy.Storage;
 
 namespace NoMercy.Setup.Server;
 
-public class ApiKeyLoader : IApiKeyLoader
+/// <summary>
+/// Loads the API keys of one host. A failed load, or keys that came only from the
+/// on-disk cache, leave one retry loop running; it stops when the loader is disposed
+/// with its host's container, so a discarded host never keeps asking the API.
+/// </summary>
+public sealed class ApiKeyLoader : IApiKeyLoader, IDisposable, IAsyncDisposable
 {
     private readonly ILogger<ApiKeyLoader> _logger;
     private readonly IApiKeyStore _apiKeyStore;
@@ -31,6 +36,10 @@ public class ApiKeyLoader : IApiKeyLoader
 
     private readonly IAuthTokenStore _authTokenStore;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly Lock _backgroundRefreshLock = new();
+    private readonly CancellationTokenSource _lifetime = new();
+    private Task? _backgroundRefresh;
+    private bool _disposed;
 
     public ApiKeyLoader(
         IAuthTokenStore authTokenStore,
@@ -67,15 +76,24 @@ public class ApiKeyLoader : IApiKeyLoader
         // ServerBootstrapper and BootOrchestrator both call this unconditionally on the
         // same singleton — without reading the flag ApplyKeys already sets, the second
         // call always tried the network again for no reason.
-        if (_apiKeyStore.KeysLoaded)
+        if (KeysFromNetwork)
             return;
 
+        // Keys from the cache, possibly kept by a host rebuilt since (#665): they may be
+        // outdated, so this loader keeps refreshing them. No fetch here, so a second
+        // call at boot on an offline server does not wait for the network again.
+        if (_apiKeyStore.KeysLoaded)
+        {
+            StartBackgroundRefresh(ct);
+            return;
+        }
+
         // 1. Try network first
-        ApiInfoResponse? liveData = await TryFetchFromNetwork();
+        ApiInfoResponse? liveData = await TryFetchFromNetwork(ct);
 
         if (liveData is not null)
         {
-            ApplyKeys(liveData);
+            ApplyKeys(liveData, fromNetwork: true);
             await WriteCacheFile(liveData);
             _logger.LogInformation("API keys loaded from network");
             return;
@@ -86,7 +104,7 @@ public class ApiKeyLoader : IApiKeyLoader
 
         if (cachedData is not null)
         {
-            ApplyKeys(cachedData);
+            ApplyKeys(cachedData, fromNetwork: false);
             string cachedAt = cachedData.CachedAt ?? "unknown";
 
             DateTime? cachedAtDate = cachedData.CachedAt is not null
@@ -129,7 +147,51 @@ public class ApiKeyLoader : IApiKeyLoader
         StartBackgroundRefresh(ct);
     }
 
-    private async Task<ApiInfoResponse?> TryFetchFromNetwork()
+    /// <summary>
+    /// Disposed with the host's container: stops the retry loop, also one started
+    /// with no token or with a token nobody cancels.
+    /// </summary>
+    public void Dispose()
+    {
+        lock (_backgroundRefreshLock)
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _lifetime.Cancel();
+            _lifetime.Dispose();
+        }
+    }
+
+    /// <summary>As <see cref="Dispose"/>, and returns once the retry loop has ended.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+
+        Task? backgroundRefresh;
+        lock (_backgroundRefreshLock)
+            backgroundRefresh = _backgroundRefresh;
+
+        if (backgroundRefresh is null)
+            return;
+
+        // Disposing a container must not throw over a loop that already ended badly.
+        try
+        {
+            await backgroundRefresh;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "API key refresh loop ended with an error");
+        }
+    }
+
+    /// <summary>Keys fetched from the API in this process, not only read from the cache.</summary>
+    private bool KeysFromNetwork =>
+        _apiKeyStore is ApiKeyStore store ? store.KeysFromNetwork : _apiKeyStore.KeysLoaded;
+
+    private async Task<ApiInfoResponse?> TryFetchFromNetwork(CancellationToken ct)
     {
         try
         {
@@ -141,7 +203,11 @@ public class ApiKeyLoader : IApiKeyLoader
                 _authTokenStore.AccessToken
             );
 
-            string content = await apiClient.SendAndReadAsync(HttpMethod.Get, "v1/info");
+            string content = await apiClient.SendAndReadAsync(
+                HttpMethod.Get,
+                "v1/info",
+                cancellationToken: ct
+            );
 
             ApiInfoResponse? data = content.FromJson<ApiInfoResponse>();
             if (data?.Data.Keys is null)
@@ -157,6 +223,10 @@ public class ApiKeyLoader : IApiKeyLoader
 
             return data;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return null;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to fetch API keys from network");
@@ -164,7 +234,7 @@ public class ApiKeyLoader : IApiKeyLoader
         }
     }
 
-    private void ApplyKeys(ApiInfoResponse data)
+    private void ApplyKeys(ApiInfoResponse data, bool fromNetwork)
     {
         if (_apiKeyStore is ApiKeyStore store)
         {
@@ -179,6 +249,7 @@ public class ApiKeyLoader : IApiKeyLoader
             store.TvdbKey = data.Data.Keys.TvdbKey;
             store.MusixmatchKey = data.Data.Keys.MusixmatchKey;
             store.KeysLoaded = true;
+            store.KeysFromNetwork = fromNetwork;
         }
     }
 
@@ -245,48 +316,80 @@ public class ApiKeyLoader : IApiKeyLoader
 
     private void StartBackgroundRefresh(CancellationToken ct)
     {
-        _ = Task.Run(
-            async () =>
+        // Several callers ask this loader for keys (the bootstrapper, the boot
+        // orchestrator, the host start, degraded-mode recovery). Each ask tries the API
+        // once, but one retry loop per loader is enough; a second only doubles the calls.
+        // The loop stops with the caller's token or with this loader, whichever is first:
+        // degraded-mode recovery asks with no token, and some rebuild paths dispose a
+        // container without cancelling its shutdown token.
+        lock (_backgroundRefreshLock)
+        {
+            if (_disposed || _backgroundRefresh is { IsCompleted: false })
+                return;
+
+            _backgroundRefresh = RunBackgroundRefresh(
+                CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, ct)
+            );
+        }
+    }
+
+    private Task RunBackgroundRefresh(CancellationTokenSource stop)
+    {
+        return Task.Run(async () =>
+        {
+            try
             {
-                int attempt = 0;
+                await RefreshUntilLoaded(stop.Token);
+            }
+            finally
+            {
+                stop.Dispose();
+            }
+        });
+    }
 
-                while (!ct.IsCancellationRequested)
-                {
-                    int delaySeconds = BackoffSeconds[Math.Min(attempt, BackoffSeconds.Length - 1)];
-                    try
-                    {
-                        await _delay(TimeSpan.FromSeconds(delaySeconds), ct);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return;
-                    }
+    private async Task RefreshUntilLoaded(CancellationToken ct)
+    {
+        int attempt = 0;
 
-                    // A loop stopped during its wait or its fetch neither asks nor writes.
-                    if (ct.IsCancellationRequested)
-                        return;
+        while (!ct.IsCancellationRequested)
+        {
+            int delaySeconds = BackoffSeconds[Math.Min(attempt, BackoffSeconds.Length - 1)];
+            try
+            {
+                await _delay(TimeSpan.FromSeconds(delaySeconds), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
 
-                    ApiInfoResponse? fresh = await TryFetchFromNetwork();
-                    if (ct.IsCancellationRequested)
-                        return;
+            // A loop stopped during its wait or its fetch neither asks nor writes.
+            if (ct.IsCancellationRequested)
+                return;
 
-                    if (fresh is not null)
-                    {
-                        ApplyKeys(fresh);
-                        await WriteCacheFile(fresh);
-                        _logger.LogInformation("API keys refreshed from network");
-                        return;
-                    }
+            // Another loader on the same store (a later host's) already fetched them.
+            if (KeysFromNetwork)
+                return;
 
-                    attempt++;
-                    _logger.LogWarning(
-                        "API key refresh attempt {Attempt} failed, retrying in {Delay}s",
-                        attempt,
-                        delaySeconds
-                    );
-                }
-            },
-            ct
-        );
+            ApiInfoResponse? fresh = await TryFetchFromNetwork(ct);
+            if (ct.IsCancellationRequested)
+                return;
+
+            if (fresh is not null)
+            {
+                ApplyKeys(fresh, fromNetwork: true);
+                await WriteCacheFile(fresh);
+                _logger.LogInformation("API keys refreshed from network");
+                return;
+            }
+
+            attempt++;
+            _logger.LogWarning(
+                "API key refresh attempt {Attempt} failed, retrying in {Delay}s",
+                attempt,
+                delaySeconds
+            );
+        }
     }
 }

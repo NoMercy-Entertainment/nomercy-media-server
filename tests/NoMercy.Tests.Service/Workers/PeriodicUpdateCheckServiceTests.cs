@@ -38,6 +38,8 @@ public sealed class PeriodicUpdateCheckServiceTests
             CallCount++;
             return Task.FromResult(false);
         }
+
+        public Task<bool> RefreshAsync() => IsUpdateAvailableAsync();
     }
 
     [Fact]

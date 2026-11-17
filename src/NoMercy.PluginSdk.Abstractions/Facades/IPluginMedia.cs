@@ -32,6 +32,12 @@ public interface IPluginMedia
 /// and shared link. The host mints the URL instead, bound to one user and one
 /// session, and the upstream's own credentials stay on the server.
 /// </para>
+/// <para>
+/// While a LAN route serves a device on the owner's network (ABI 12.10), every
+/// link minted here is bound to that device instead: it plays only on the
+/// owner's network, for that device, under the same lifetime rules, and stops
+/// when the owner revokes the device.
+/// </para>
 /// </summary>
 public interface IPluginMediaProxy
 {

@@ -9,15 +9,19 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Security.Claims;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
+using NoMercy.Api.Plugins;
 using NoMercy.Authorization;
+using NoMercy.Networking.Http;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Media;
 
 namespace NoMercy.Api.Controllers.V1.Plugins;
@@ -37,7 +41,9 @@ namespace NoMercy.Api.Controllers.V1.Plugins;
 public class PluginMediaController(
     PluginMediaTicketMinter minter,
     IPluginAccessResolver access,
-    IPluginMediaFactory media
+    IPluginMediaFactory media,
+    PluginLanDeviceMinter devices,
+    IPluginManager plugins
 ) : BaseController
 {
     private static readonly FileExtensionContentTypeProvider ContentTypes = Types();
@@ -72,6 +78,64 @@ public class PluginMediaController(
         // seconds, and each ask keeps its ticket good for the next one.
         minter.Played(ticket);
 
+        return await ServeAsync(id, read, ct);
+    }
+
+    /// <summary>
+    /// What a device on the owner's network fetches through a link minted
+    /// while a LAN route served it. No account: the ticket is bound to the
+    /// device, it answers only a direct LAN caller, and it stops the moment
+    /// the owner revokes the device. Every refusal is the one every LAN
+    /// surface gives.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("api/v{version:apiVersion}/plugins/{id:ulid}/lan-media/{ticket}")]
+    public async Task<IActionResult> LanMedia(Ulid id, string ticket, CancellationToken ct)
+    {
+        if (!HttpContext.IsDirectLanCaller())
+            return ForbiddenResponse(PluginLanRefusal.For(id));
+
+        if (
+            minter.ReadForDevice(ticket, id) is not { DeviceId: { } deviceId } read
+            || devices.Active(id, deviceId) is not { } device
+        )
+            return ForbiddenResponse(PluginLanRefusal.For(id));
+
+        if (
+            plugins.GetPluginInfo(id)
+            is not { Status: PluginStatus.Active, Capabilities.Lan.Routes.Count: > 0 }
+        )
+            return ForbiddenResponse(PluginLanRefusal.For(id));
+
+        minter.Played(ticket);
+
+        // A device the owner revokes while it is still reading is cut off
+        // there and then, not when the channel ends.
+        HttpContext.Response.RegisterForDispose(
+            devices
+                .RevocationOf(id, deviceId)
+                .Register(static state => ((HttpContext)state!).Abort(), HttpContext)
+        );
+
+        // Asking, for the proxy, is this device: a playlist's children are
+        // minted for it rather than refused for having no account.
+        HttpContext.User = new(new ClaimsIdentity());
+        HttpContext.Features.Set(new PluginLanDispatch(id, device.DeviceId, device.Name));
+
+        // Never kept by a cache: a stored answer would be served again without
+        // the network check, the ticket or a revocation being looked at.
+        PluginLanNoStore.Install(HttpContext);
+        PluginLanNoStore.Seal(Response);
+
+        return await ServeAsync(id, read, ct);
+    }
+
+    private async Task<IActionResult> ServeAsync(
+        Ulid id,
+        PluginMediaTicket read,
+        CancellationToken ct
+    )
+    {
         if (read.FilePath is { } file)
             return ServeFile(id, file);
 

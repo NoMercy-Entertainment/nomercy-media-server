@@ -17,17 +17,22 @@ worker. Adding more workers is the same procedure repeated.
   task wire format is versioned but hasn't stabilised yet).
 - Network reachability in both directions: coordinator → worker (task dispatch)
   and worker → coordinator (heartbeats + progress + optional source fetch).
-- A **shared signing key** — a random 32+ character string. Generate with
-  `openssl rand -base64 32` or equivalent. Both machines need the identical
-  value.
+- A **shared signing key** — a random string of at least 32 characters.
+  Generate one with `openssl rand -base64 32` or equivalent. Both machines
+  need the identical value. A shorter key is refused: distributed encoding
+  stays off and the server log says why.
+- Clocks within 5 minutes of each other (any NTP-synced machine is). A signed
+  request whose timestamp is more than 5 minutes off, either way, is refused.
 - **Either** a shared filesystem visible from both machines (NAS, SMB, NFS)
   **or** HTTP reachability from the worker back to the coordinator so it can
   stream source files.
 
 ## Coordinator config
 
-Set these in `EncoderOptions` (typically via `appsettings.json` → `Encoder`
-section or the bootstrap call in `Program.cs`):
+Set these in the `Encoder` section of `appsettings.json`, or as environment
+variables with a double underscore (`Encoder__DistributedEncodingSigningKey`).
+The server reads `DistributedEncodingSigningKey`, `CoordinatorUrl`,
+`WorkerSelfBaseUrl`, `WorkerId` and `WorkerHeartbeatInterval` from there:
 
 ```json
 {
@@ -61,14 +66,19 @@ settings that point at the coordinator:
 - `WorkerSelfBaseUrl` — how the coordinator reaches back to this worker. The
   coordinator POSTs encode tasks to `{WorkerSelfBaseUrl}/api/v1/worker/execute-task`.
 - `WorkerId` — defaults to `Environment.MachineName`. Override when running
-  multiple workers on the same host.
-- `WorkerHeartbeatInterval` — default 20s, must be comfortably below the
-  coordinator's 60s stale threshold.
+  multiple workers on the same host. Only the letters `A-Z`/`a-z`, the
+  digits, `.`, `_` and `-` are allowed; with anything else the worker does
+  not register and logs a warning.
+- `WorkerHeartbeatInterval` — default 20s. Kept between 1s and 30s (a value
+  outside that range is moved to the nearest limit, with a warning): the
+  coordinator drops a worker after 60s without a heartbeat.
 
 On boot the worker's `WorkerSelfRegistrationService`:
 
-1. POSTs `/api/v1/dashboard/workers/register` to the coordinator with its
-   hardware capabilities.
+1. POSTs `/api/v1/distribution/workers/register` to the coordinator with its
+   hardware capabilities. Every call is signed with the shared key
+   (`X-NoMercy-Timestamp` and `X-NoMercy-Signature`); the signature is the
+   worker's only credential, it needs no user token.
 2. Heartbeats every `WorkerHeartbeatInterval` to stay active.
 3. DELETEs its registration when the process shuts down cleanly. If the
    process crashes, the coordinator evicts the stale entry after ~60s.
@@ -219,6 +229,11 @@ clears the cooldown.
 **Coordinator returns 503 on register/heartbeat.**
 The coordinator's `DistributedEncodingSigningKey` isn't set. Check
 `appsettings.json` on the coordinator and restart.
+
+**Coordinator returns 401 on register/heartbeat.**
+The signature did not verify: the keys differ, or the two clocks are more
+than 5 minutes apart. A worker whose `CoordinatorUrl` is not an absolute
+`http(s)://` URL does not try at all and logs a warning instead.
 
 **Worker registers successfully but tasks all fall back to local.**
 Signing keys differ between coordinator and worker. Every task payload

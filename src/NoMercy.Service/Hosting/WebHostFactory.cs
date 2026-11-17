@@ -18,7 +18,6 @@ using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Service.Configuration;
-using NoMercy.Setup.Server;
 
 namespace NoMercy.Service.Hosting;
 
@@ -78,8 +77,6 @@ public static class WebHostFactory
         builder.Services.AddSingleton<IShutdownCoordinator, ShutdownCoordinator>();
         builder.Services.AddSingleton<IServerRunner, ServerRunner>();
         builder.Services.AddSingleton<IPluginLoader, PluginLoader>();
-        builder.Services.AddSingleton<IApiKeyStore>(_ => ApiKeyStore.ForHost());
-        builder.Services.AddSingleton<IApiKeyLoader, ApiKeyLoader>();
 
         builder.Services.Configure<ServerConfiguration>(builder.Configuration.GetSection("Server"));
         builder.Services.AddSingleton<IServerConfiguration, ServerConfigurationWrapper>();

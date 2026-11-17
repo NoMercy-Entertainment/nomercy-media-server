@@ -61,13 +61,17 @@ public class LibrariesController(
     IServedFolderRegistry servedFolders
 ) : BaseController
 {
+    /// <summary>
+    /// The full settings of every library, folder paths and encoder presets
+    /// included, for the dashboard and the disc-confirm flow. Every client calls
+    /// it only from screens a moderator reaches; a member reads its libraries
+    /// through GET /setup/libraries or GET /libraries, without the paths (#127).
+    /// </summary>
     [HttpGet]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> Index()
     {
         Guid userId = User.UserId();
-
-        if (!AuthPolicy.IsAllowed(User))
-            return UnauthorizedResponse("You do not have permission to view libraries");
 
         IEnumerable<Library> libraries = await libraryRepository.GetDashboardLibraries(userId);
 
@@ -80,12 +84,10 @@ public class LibrariesController(
     }
 
     [HttpPost]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> Store()
     {
         Guid userId = User.UserId();
-
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to create a new library");
 
         try
         {

@@ -19,6 +19,7 @@ namespace NoMercy.Tests.Api.Dashboard;
 public sealed class ServerPowerAuthorizationTests
 {
     [Theory]
+    [InlineData(nameof(ServerController.StartServer))]
     [InlineData(nameof(ServerController.StopServer))]
     [InlineData(nameof(ServerController.RestartServer))]
     [InlineData(nameof(ServerController.Shutdown))]

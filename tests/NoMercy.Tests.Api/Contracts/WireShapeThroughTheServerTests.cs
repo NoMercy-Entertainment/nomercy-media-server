@@ -156,6 +156,7 @@ public class WireShapeThroughTheServerTests : IClassFixture<NoMercyApiFactory>
             RestAnonymous = true,
             Ws = true,
             Network = new() { Hosts = ["somafm.com"] },
+            Lan = new() { Routes = ["hdhr/discover.json"] },
         };
 
         JObject wire = SerializeAsTheServerWould(capabilities);
@@ -165,5 +166,6 @@ public class WireShapeThroughTheServerTests : IClassFixture<NoMercyApiFactory>
         wire["restAnonymous"]!.Value<bool>().Should().BeTrue();
         wire["ws"]!.Value<bool>().Should().BeTrue();
         wire["network"]!["hosts"]!.Values<string>().Should().Equal("somafm.com");
+        wire["lan"]!["routes"]!.Values<string>().Should().Equal("hdhr/discover.json");
     }
 }

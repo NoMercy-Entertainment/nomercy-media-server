@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using NoMercy.Api.Filters;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
 using NoMercy.Encoder.Hardware;
@@ -28,6 +29,12 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 ///
 /// Endpoints gated by EncoderOptions.DistributedEncodingSigningKey being
 /// set — single-machine installs return 503 and the registry stays empty.
+///
+/// The calls a worker makes about itself (register, heartbeat, unregister) are
+/// <see cref="HmacSignedOrOwnerAttribute"/>: the worker has no bearer token, so
+/// its request signature, checked by HmacValidationMiddleware on the
+/// /distribution/ route, is its credential. The legacy /dashboard/ alias is not
+/// signature-checked and stays owner-only.
 /// </summary>
 [ApiController]
 [Tags("Distribution Workers")]
@@ -90,6 +97,8 @@ public class WorkersController(
     }
 
     [HttpPost("register")]
+    [AllowAnonymous]
+    [HmacSignedOrOwner]
     public IActionResult Register([FromBody] RegisterWorkerRequest request)
     {
         if (!encoderOptions.IsDistributedEncodingEnabled)
@@ -97,9 +106,6 @@ public class WorkersController(
                 "Distributed encoding is not enabled on this server. "
                     + "Set DistributedEncodingSigningKey in EncoderOptions and restart."
             );
-
-        if (!AuthPolicy.IsOwner(User))
-            return UnauthorizedResponse("Only the server owner can register workers");
 
         if (string.IsNullOrWhiteSpace(request.WorkerId))
             return BadRequestResponse("worker_id is required");
@@ -150,15 +156,14 @@ public class WorkersController(
     }
 
     [HttpPost("{workerId}/heartbeat")]
+    [AllowAnonymous]
+    [HmacSignedOrOwner]
     public IActionResult Heartbeat(string workerId, [FromBody] HeartbeatRequest? request)
     {
         if (!encoderOptions.IsDistributedEncodingEnabled)
             return ServiceUnavailableResponse(
                 "Distributed encoding is not enabled on this server."
             );
-
-        if (!AuthPolicy.IsOwner(User))
-            return UnauthorizedResponse("Only the server owner can send heartbeats");
 
         bool accepted = registry.Heartbeat(workerId);
         if (!accepted)
@@ -269,7 +274,8 @@ public class WorkersController(
     }
 
     [HttpDelete("{workerId}")]
-    [Authorize(Policy = "Owner")]
+    [AllowAnonymous]
+    [HmacSignedOrOwner]
     public IActionResult Unregister(string workerId)
     {
         bool removed = registry.Unregister(workerId);

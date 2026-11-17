@@ -16,6 +16,7 @@ using NoMercy.Api.DTOs.Common;
 using NoMercy.Authorization;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Mvc;
 
 namespace NoMercy.Api.Plugins;
@@ -56,6 +57,18 @@ public class PluginControllerCapabilityFilter(
 
         if (info is null || info.Status != PluginStatus.Active || info.Capabilities?.Rest != true)
         {
+            context.Result = new NotFoundResult();
+            return Task.CompletedTask;
+        }
+
+        // A LAN device has no account either. The LAN route already checked
+        // its network, its credential and that this route is one the manifest
+        // names for devices; it is admitted to this plugin and no other.
+        if (context.HttpContext.Features.Get<PluginLanDispatch>() is { } lan)
+        {
+            if (lan.PluginId == pluginId)
+                return next();
+
             context.Result = new NotFoundResult();
             return Task.CompletedTask;
         }

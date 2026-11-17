@@ -487,6 +487,7 @@ public class EncodingPresetsController(
     /// </summary>
     [Obsolete("Use POST /api/v1/encoder/profiles/{id}/preview")]
     [HttpPost("preview")]
+    [Authorize(Policy = "Moderator")]
     public Task<IActionResult> Preview([FromBody] PreviewRequest request, CancellationToken ct)
     {
         return Task.FromResult<IActionResult>(

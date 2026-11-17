@@ -107,6 +107,11 @@ public class PluginConsentService(
         if (capabilities.Rest)
             parts.Add(capabilities.RestAnonymous ? "its own endpoints, open" : "its own endpoints");
 
+        if (capabilities.Lan?.Routes.Count > 0)
+            parts.Add(
+                $"routes for devices on your network {string.Join(", ", capabilities.Lan.Routes)}"
+            );
+
         if (capabilities.Ws)
             parts.Add("a socket");
 

@@ -39,10 +39,19 @@ public interface IDeviceRepository
     Task DeleteAllActivityLogsAsync();
 
     /// <summary>
-    /// The device a user owns with this client-reported device id and type, or null.
+    /// The device a user owns with this id and type, or null: by client device id first,
+    /// then by row id when the id parses as a Ulid, each time only among that owner's
+    /// devices of that type. A device of another owner or type is never returned.
     /// </summary>
     Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type);
 
     /// <summary>The device registered under a client device id, whoever owns it.</summary>
     Task<Device?> GetByClientDeviceIdAsync(string deviceId);
+
+    /// <summary>
+    /// The device with this client device id, or, when none has it and the id parses as a
+    /// Ulid, the device with that row id, whoever owns it. The device hub lists devices by
+    /// row id, while older callers send the client device id.
+    /// </summary>
+    Task<Device?> GetByClientOrRowIdAsync(string deviceId);
 }

@@ -116,12 +116,26 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
         return context.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId);
     }
 
-    public Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
+    public async Task<Device?> GetByClientOrRowIdAsync(string deviceId)
     {
-        return context
+        // The device hub lists a device by its row Ulid; older callers send the client device id.
+        Device? device = await GetByClientDeviceIdAsync(deviceId);
+        if (device is null && Ulid.TryParse(deviceId, out Ulid rowId))
+            device = await GetByIdAsync(rowId);
+        return device;
+    }
+
+    public async Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
+    {
+        // Owner and type are in both queries, so another device whose client id equals
+        // this device's row id can never shadow it.
+        IQueryable<Device> owned = context
             .Devices.AsNoTracking()
-            .FirstOrDefaultAsync(d =>
-                d.DeviceId == deviceId && d.OwnerUserId == ownerUserId && d.Type == type
-            );
+            .Where(d => d.OwnerUserId == ownerUserId && d.Type == type);
+
+        Device? device = await owned.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
+        if (device is null && Ulid.TryParse(deviceId, out Ulid rowId))
+            device = await owned.FirstOrDefaultAsync(d => d.Id == rowId);
+        return device;
     }
 }

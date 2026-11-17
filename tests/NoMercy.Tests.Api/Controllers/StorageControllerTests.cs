@@ -68,6 +68,7 @@ public class StorageControllerTests
             logger: null!,
             resourceMonitor: null!,
             updateChecker: null!,
+            updateStatus: null!,
             appLifetime: null!,
             serverConfiguration: null!,
             fileRepository: null!,
