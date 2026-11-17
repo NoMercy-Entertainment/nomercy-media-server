@@ -30,8 +30,9 @@ namespace NoMercy.PluginSdk.Analyzers;
 /// </para>
 /// <para>
 /// It only reports what it can prove. Props built somewhere else, from a
-/// variable or a method, are not read, so a plugin that builds its props in a
-/// helper is never flagged by mistake.
+/// variable or a method, are not read, and neither is a <c>Design</c> record,
+/// which is merged into the props under names this rule cannot see. A plugin
+/// that builds its props either way is never flagged by mistake.
 /// </para>
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
@@ -72,8 +73,8 @@ public sealed class ShelfPropsIdAnalyzer : DiagnosticAnalyzer
 
     private static void Inspect(SyntaxNodeAnalysisContext context)
     {
-        BaseObjectCreationExpressionSyntax creation =
-            (BaseObjectCreationExpressionSyntax)context.Node;
+        BaseObjectCreationExpressionSyntax creation = (BaseObjectCreationExpressionSyntax)
+            context.Node;
 
         if (creation.Initializer is not { } initializer)
             return;
@@ -86,10 +87,14 @@ public sealed class ShelfPropsIdAnalyzer : DiagnosticAnalyzer
 
         string? component = null;
         ExpressionSyntax? props = null;
+        bool hasDesign = false;
 
         foreach (ExpressionSyntax expression in initializer.Expressions)
         {
-            if (expression is not AssignmentExpressionSyntax { Left: IdentifierNameSyntax name } assignment)
+            if (
+                expression
+                is not AssignmentExpressionSyntax { Left: IdentifierNameSyntax name } assignment
+            )
                 continue;
 
             if (name.Identifier.ValueText == "Component")
@@ -97,9 +102,17 @@ public sealed class ShelfPropsIdAnalyzer : DiagnosticAnalyzer
                     context.SemanticModel.GetConstantValue(assignment.Right).Value as string;
             else if (name.Identifier.ValueText == "Props")
                 props = assignment.Right;
+            else if (name.Identifier.ValueText == "Design")
+                hasDesign = true;
         }
 
         if (component is null || !Components.Contains(component))
+            return;
+
+        // Design is merged into the props on the wire, under the names its own
+        // [JsonProperty] attributes give. Whether one of them is "id" is not
+        // something this rule can see, so a node with a Design is never reported.
+        if (hasDesign)
             return;
 
         if (props is not null && !ProvablyMissesId(context.SemanticModel, props))

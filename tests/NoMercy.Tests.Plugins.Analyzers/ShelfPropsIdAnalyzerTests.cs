@@ -34,6 +34,16 @@ public class ShelfPropsIdAnalyzerTests
                 public string Component { get; init; } = "";
                 public Dictionary<string, object?> Props { get; init; } = new();
                 public List<PluginComponent> Items { get; init; } = new();
+                public object? Design { get; init; }
+            }
+        }
+
+        namespace Sample
+        {
+            public record NMGridProps
+            {
+                public string? Id { get; init; }
+                public string? Title { get; init; }
             }
         }
 
@@ -120,6 +130,30 @@ public class ShelfPropsIdAnalyzerTests
     }
 
     [Theory]
+    // Design is merged into the props under its own JSON names, which the rule
+    // cannot see, so neither of these can be proven to miss the id.
+    [InlineData("""Design = new NMGridProps { Id = "all" },""")]
+    [InlineData("""Design = new NMGridProps { Title = "All" },""")]
+    [InlineData(
+        """Design = new NMGridProps { Title = "All" }, Props = new() { ["title"] = "All" },"""
+    )]
+    public async Task A_shelf_with_a_design_record_is_left_alone(string design)
+    {
+        IReadOnlyList<Diagnostic> diagnostics = await RunAsync(
+            $$"""
+            PluginComponent shelf = new()
+            {
+                Id = "all",
+                Component = "NMGrid",
+                {{design}}
+            };
+            """
+        );
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Theory]
     // The design system's card reads no id from its props.
     [InlineData("NMCard")]
     [InlineData("NMText")]
@@ -163,14 +197,12 @@ public class ShelfPropsIdAnalyzerTests
     {
         ShelfPropsIdAnalyzer
             .Components.Should()
-            .BeEquivalentTo(
-                [
-                    NmAppComponents.Grid,
-                    NmAppComponents.MusicCard,
-                    NmAppComponents.Carousel,
-                    NmAppComponents.Lolomo,
-                ]
-            );
+            .BeEquivalentTo([
+                NmAppComponents.Grid,
+                NmAppComponents.MusicCard,
+                NmAppComponents.Carousel,
+                NmAppComponents.Lolomo,
+            ]);
     }
 
     [Fact]
