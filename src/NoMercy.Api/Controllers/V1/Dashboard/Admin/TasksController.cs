@@ -933,8 +933,7 @@ public class TasksController(
     }
 
     /// <summary>
-    /// Stop dispatching new encoder jobs. In-flight FFmpeg processes keep running —
-    /// use the per-task pause endpoint to suspend those separately.
+    /// Stop dispatching new encoder jobs and suspend the FFmpeg processes already running.
     /// </summary>
     [HttpPost]
     [Route("pause-queue")]
@@ -943,7 +942,7 @@ public class TasksController(
         foreach (string queue in EncoderQueueFamily)
             await queueRunner.Pause(queue);
 
-        SuspendRunningEncodes();
+        await SuspendRunningEncodes();
         return Ok(
             new StatusResponseDto<string> { Message = "Encoder queue paused", Status = "success" }
         );
@@ -1110,11 +1109,15 @@ public class TasksController(
     /// output, so resuming continues the encode rather than starting it
     /// again.</para>
     /// </summary>
-    private void SuspendRunningEncodes()
+    private async Task SuspendRunningEncodes()
     {
-        foreach (int jobId in processRegistry.ActiveJobIds)
-        foreach (int processId in processRegistry.GetProcessIds(jobId))
-            processThrottle.Suspend(processId);
+        List<QueueJobModel> running = await queueTaskRepository.GetRunningEncoderJobsAsync(
+            UiLimits.MaximumTasksInList
+        );
+        processThrottle.SuspendEncodes(
+            processRegistry,
+            [.. running.Select(job => $"queue row {job.Id} ({job.Queue})")]
+        );
     }
 
     /// <summary>
@@ -1124,9 +1127,7 @@ public class TasksController(
     /// </summary>
     private void ResumeRunningEncodes()
     {
-        foreach (int jobId in processRegistry.ActiveJobIds)
-        foreach (int processId in processRegistry.GetProcessIds(jobId))
-            processThrottle.Resume(processId);
+        processThrottle.ResumeEncodes(processRegistry);
     }
 
     /// <summary>Source-of-truth paused state for the encoder queue. The

@@ -15,23 +15,24 @@ namespace NoMercy.Encoder.Execution;
 
 public class ProcessThrottle(ILogger<ProcessThrottle> logger, IProcessSuspender suspender)
 {
-    // Registered as a singleton in DI and called concurrently from every
-    // worker thread that wants to suspend/resume its ffmpeg child. The
-    // HashSet must be guarded — without the lock, two threads adding distinct
-    // pids at the same time could corrupt internal buckets and a third caller
-    // could see a phantom membership result.
-    private readonly HashSet<int> _suspendedPids = [];
+    // Two independent holds, the operator's pause and the live-playback yield:
+    // the process runs only when neither holds it. A DI singleton called from
+    // every worker thread, so both sets share one lock.
+    private readonly HashSet<int> _pausedPids = [];
+    private readonly HashSet<int> _yieldedPids = [];
     private readonly Lock _lock = new();
 
+    /// <summary>Operator pause: holds the process until <see cref="Resume"/>.</summary>
     public void Suspend(int processId)
     {
         // Lock spans the OS call so a concurrent Resume on the same pid can't
-        // interleave between set-add and the actual SIGSTOP, leaving the OS
-        // state and the tracked state out of sync. Workers throttle per-pid
-        // so contention is negligible.
+        // interleave between set-add and the actual SIGSTOP.
         lock (_lock)
         {
-            if (!_suspendedPids.Add(processId))
+            if (!_pausedPids.Add(processId))
+                return;
+
+            if (_yieldedPids.Contains(processId))
                 return;
 
             suspender.Suspend(processId);
@@ -40,11 +41,15 @@ public class ProcessThrottle(ILogger<ProcessThrottle> logger, IProcessSuspender 
         }
     }
 
+    /// <summary>Ends the operator pause. The process stays stopped while playback holds it.</summary>
     public void Resume(int processId)
     {
         lock (_lock)
         {
-            if (!_suspendedPids.Remove(processId))
+            if (!_pausedPids.Remove(processId))
+                return;
+
+            if (_yieldedPids.Contains(processId))
                 return;
 
             suspender.Resume(processId);
@@ -53,11 +58,92 @@ public class ProcessThrottle(ILogger<ProcessThrottle> logger, IProcessSuspender 
         }
     }
 
+    /// <summary>Live playback needs the capacity: stop the background encode.</summary>
+    public void YieldToPlayback(int processId)
+    {
+        lock (_lock)
+        {
+            if (!_yieldedPids.Add(processId))
+                return;
+
+            if (_pausedPids.Contains(processId))
+                return;
+
+            suspender.Suspend(processId);
+
+            logger.LogDebug("Yielded process {Pid} to live playback", processId);
+        }
+    }
+
+    /// <summary>Playback no longer needs the capacity. An operator pause still holds the process.</summary>
+    public void EndYield(int processId)
+    {
+        lock (_lock)
+        {
+            if (!_yieldedPids.Remove(processId))
+                return;
+
+            if (_pausedPids.Contains(processId))
+                return;
+
+            suspender.Resume(processId);
+
+            logger.LogDebug("Process {Pid} no longer yields to live playback", processId);
+        }
+    }
+
+    /// <summary>The process exited: drop every hold so a reused pid starts clean.</summary>
+    public void Forget(int processId)
+    {
+        lock (_lock)
+        {
+            _pausedPids.Remove(processId);
+            _yieldedPids.Remove(processId);
+        }
+    }
+
+    /// <summary>Pauses every registered encode ffmpeg; warns with <paramref name="runningEncodes"/> when none is reachable.</summary>
+    public IReadOnlyList<int> SuspendEncodes(
+        IEncoderProcessRegistry registry,
+        IReadOnlyCollection<string> runningEncodes
+    )
+    {
+        List<int> reached = [];
+        foreach (int jobId in registry.ActiveJobIds)
+        foreach (int processId in registry.GetProcessIds(jobId))
+        {
+            Suspend(processId);
+            reached.Add(processId);
+        }
+
+        if (reached.Count == 0 && runningEncodes.Count > 0)
+            logger.LogWarning(
+                "Encoder pause reached no ffmpeg process; still running: {RunningEncodes}",
+                string.Join(", ", runningEncodes)
+            );
+        else
+            logger.LogInformation(
+                "Encoder pause suspended {Count} ffmpeg process(es): {ProcessIds}",
+                reached.Count,
+                string.Join(", ", reached)
+            );
+
+        return reached;
+    }
+
+    /// <summary>Ends the operator pause of every encode ffmpeg in <paramref name="registry"/>.</summary>
+    public void ResumeEncodes(IEncoderProcessRegistry registry)
+    {
+        foreach (int jobId in registry.ActiveJobIds)
+        foreach (int processId in registry.GetProcessIds(jobId))
+            Resume(processId);
+    }
+
     public bool IsSuspended(int processId)
     {
         lock (_lock)
         {
-            return _suspendedPids.Contains(processId);
+            return _pausedPids.Contains(processId) || _yieldedPids.Contains(processId);
         }
     }
 }

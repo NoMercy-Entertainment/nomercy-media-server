@@ -243,6 +243,8 @@ public class FfmpegExecutor : IFfmpegExecutor
             await playbackMonitorCts.CancelAsync().ConfigureAwait(false);
             if (playbackMonitorTask is not null)
                 await playbackMonitorTask.ConfigureAwait(false);
+            if (ffmpegPid > 0)
+                _processThrottle?.Forget(ffmpegPid);
             killCts.Dispose();
         }
     }
@@ -257,11 +259,11 @@ public class FfmpegExecutor : IFfmpegExecutor
                 if (needsCapacity)
                 {
                     _activityMonitor?.Touch();
-                    _processThrottle!.Suspend(processId);
+                    _processThrottle!.YieldToPlayback(processId);
                 }
                 else
                 {
-                    _processThrottle!.Resume(processId);
+                    _processThrottle!.EndYield(processId);
                 }
 
                 await Task.Delay(_playbackPollInterval, ct).ConfigureAwait(false);
@@ -276,7 +278,7 @@ public class FfmpegExecutor : IFfmpegExecutor
         {
             try
             {
-                _processThrottle!.Resume(processId);
+                _processThrottle!.EndYield(processId);
             }
             catch (Exception ex)
             {
