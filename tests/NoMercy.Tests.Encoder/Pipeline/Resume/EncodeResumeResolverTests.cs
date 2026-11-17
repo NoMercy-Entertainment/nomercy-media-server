@@ -23,8 +23,7 @@ using NoMercy.Tests.Encoder.Storage;
 namespace NoMercy.Tests.Encoder.Pipeline.Resume;
 
 /// <summary>
-/// An interrupted HLS encode leaves no playlist, so the resume point comes from
-/// counting the segment files. Every refusal falls back to a start at zero.
+/// The resume point comes from counting segment files; every refusal starts at zero.
 /// </summary>
 public class EncodeResumeResolverTests : IDisposable
 {
@@ -63,6 +62,30 @@ public class EncodeResumeResolverTests : IDisposable
         decision.Resume.Should().BeTrue(decision.Reason);
         decision.StartSegment.Should().Be(5);
         decision.ResumeMs.Should().Be(9008);
+    }
+
+    [Fact]
+    public async Task Resolve_ResumedEncodeStoppedByTheHost_ResumesAgainFromTheLaterSegment()
+    {
+        Segments("video", "v", 6);
+        Segments("audio", "a", 8);
+        _prober.Set("video/v_00000.ts", 1.4);
+        _prober.Set("video/v_00005.ts", 10.408);
+        FfmpegCommand[] commands = StartMarker(DefaultCommands());
+        ResumeDecision first = await _resolver.ResolveAsync(Request(commands), default);
+        first.StartSegment.Should().Be(5);
+
+        // The resumed run wrote segments 6..9 before the host stopped it; the marker stays.
+        Segments("video", "v", 10);
+        Segments("audio", "a", 11);
+        _prober.Set("video/v_00009.ts", 18.018);
+
+        ResumeDecision second = await _resolver.ResolveAsync(Request(commands), default);
+
+        second.Resume.Should().BeTrue(second.Reason);
+        second.StartSegment.Should().Be(9);
+        second.ResumeMs.Should().Be(16618);
+        File.Exists(Path.Combine(_dir, "video", "v_00000.ts")).Should().BeTrue();
     }
 
     [Fact]
