@@ -57,6 +57,7 @@ public class SegmentAnalysisSchedulingTests
             .ReturnsAsync(() => []);
 
         using MediaContext context = _factory.CreateDbContext();
+        context.Tvs.Add(new Tv { Id = 1, Title = "Hellsing" });
         context.LibraryTv.Add(new LibraryTv { LibraryId = _libraryId, TvId = 1 });
         context.LibraryMovie.Add(new LibraryMovie { LibraryId = _libraryId, MovieId = 129 });
         context.Seasons.AddRange(new Season { Id = 10, TvId = 1, SeasonNumber = 1 }, new Season { Id = 11, TvId = 1, SeasonNumber = 2 });
@@ -96,6 +97,7 @@ public class SegmentAnalysisSchedulingTests
 
         _queued.Select(j => j.SeasonId).OfType<int>().Should().Equal(10);
         _queued.Select(j => j.MovieId).OfType<int>().Should().Equal(129);
+        _queued.Select(j => j.Title).Should().Equal("Hellsing, season 1", "Movie");
     }
 
     [Fact]

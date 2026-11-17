@@ -35,6 +35,7 @@ using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.MediaProcessing.Jobs.SegmentJobs;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Domain;
@@ -747,6 +748,13 @@ public class TasksController(
                 OcrCardTitle(ocr.PendingTracks()),
                 string.Join(", ", ocr.PendingTracks().Select(track => track.SupName)),
                 ocr.HostFolder
+            ),
+            // Intro / credits analysis (#598): one per season or movie, no folder.
+            SegmentAnalysisJob segments => (
+                "segments",
+                segments.DisplayTitle,
+                segments.Target,
+                string.Empty
             ),
             _ => (string.Empty, string.Empty, string.Empty, string.Empty),
         };

@@ -82,20 +82,23 @@ public sealed class SegmentAnalysisScheduler(
                 .Where(e => e.Id == evt.JobId && e.VideoFiles.Any())
                 .Select(e => (int?)e.SeasonId)
                 .FirstOrDefaultAsync(ct);
-            bool movie = await context
+            string? movieTitle = await context
                 .Movies.AsNoTracking()
-                .AnyAsync(m => m.Id == evt.JobId && m.VideoFiles.Any(), ct);
+                .Where(m => m.Id == evt.JobId && m.VideoFiles.Any())
+                .Select(m => m.Title)
+                .FirstOrDefaultAsync(ct);
 
             if (seasonId is not null)
             {
                 await state.ResetFailuresAsync(SegmentAnalysisTarget.Season, seasonId.Value, ct);
-                Dispatch(SegmentAnalysisJob.ForSeason(seasonId.Value));
+                Dictionary<int, string> titles = await SeasonTitlesAsync(context, [seasonId.Value], ct);
+                Dispatch(SegmentAnalysisJob.ForSeason(seasonId.Value, titles.GetValueOrDefault(seasonId.Value, string.Empty)));
             }
 
-            if (movie)
+            if (movieTitle is not null)
             {
                 await state.ResetFailuresAsync(SegmentAnalysisTarget.Movie, evt.JobId, ct);
-                Dispatch(SegmentAnalysisJob.ForMovie(evt.JobId));
+                Dispatch(SegmentAnalysisJob.ForMovie(evt.JobId, movieTitle));
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -117,26 +120,26 @@ public sealed class SegmentAnalysisScheduler(
                 )
                 .Select(s => s.Id)
                 .ToListAsync(ct);
-            List<int> movies = await context
+            Dictionary<int, string> movies = await context
                 .Movies.AsNoTracking()
                 .Where(m =>
                     context.LibraryMovie.Any(lm => lm.LibraryId == evt.LibraryId && lm.MovieId == m.Id)
                     && m.VideoFiles.Any()
                 )
-                .Select(m => m.Id)
-                .ToListAsync(ct);
+                .ToDictionaryAsync(m => m.Id, m => m.Title, ct);
 
             HashSet<int> doneSeasons = await state.AnalysedAsync(SegmentAnalysisTarget.Season, ct);
             doneSeasons.UnionWith(await state.GivenUpAsync(SegmentAnalysisTarget.Season, ct));
             HashSet<int> doneMovies = await state.AnalysedAsync(SegmentAnalysisTarget.Movie, ct);
             doneMovies.UnionWith(await state.GivenUpAsync(SegmentAnalysisTarget.Movie, ct));
             List<int> todoSeasons = [.. seasons.Where(id => !doneSeasons.Contains(id))];
-            List<int> todoMovies = [.. movies.Where(id => !doneMovies.Contains(id))];
+            List<int> todoMovies = [.. movies.Keys.Where(id => !doneMovies.Contains(id)).Order()];
+            Dictionary<int, string> seasonTitles = await SeasonTitlesAsync(context, todoSeasons, ct);
 
             foreach (int seasonId in todoSeasons)
-                Dispatch(SegmentAnalysisJob.ForSeason(seasonId));
+                Dispatch(SegmentAnalysisJob.ForSeason(seasonId, seasonTitles.GetValueOrDefault(seasonId, string.Empty)));
             foreach (int movieId in todoMovies)
-                Dispatch(SegmentAnalysisJob.ForMovie(movieId));
+                Dispatch(SegmentAnalysisJob.ForMovie(movieId, movies[movieId]));
 
             if (todoSeasons.Count + todoMovies.Count > 0)
                 logger.LogInformation(
@@ -150,6 +153,21 @@ public sealed class SegmentAnalysisScheduler(
         {
             logger.LogWarning(ex, "Segment analysis: could not queue the backfill for {Library}", evt.LibraryName);
         }
+    }
+
+    /// <summary>"Show, season N" for the tasks panel.</summary>
+    private static async Task<Dictionary<int, string>> SeasonTitlesAsync(
+        MediaContext context,
+        List<int> seasonIds,
+        CancellationToken ct
+    )
+    {
+        var rows = await context
+            .Seasons.AsNoTracking()
+            .Where(s => seasonIds.Contains(s.Id))
+            .Select(s => new { s.Id, Show = s.Tv.Title, s.SeasonNumber })
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.Id, r => $"{r.Show}, season {r.SeasonNumber}");
     }
 
     private void Dispatch(SegmentAnalysisJob job) => dispatcher.Dispatch(job, job.QueueName, job.Priority);

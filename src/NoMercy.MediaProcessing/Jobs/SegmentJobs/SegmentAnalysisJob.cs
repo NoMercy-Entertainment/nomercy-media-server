@@ -12,6 +12,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using NoMercy.MediaProcessing.Segments;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;
@@ -43,6 +44,20 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
     public int? SeasonId { get; set; }
     public int? MovieId { get; set; }
 
+    /// <summary>What the tasks panel calls this run ("Hellsing, season 1"); empty when unknown.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>The panel's name for the run: its title, or the item's id.</summary>
+    [JsonIgnore]
+    public string DisplayTitle =>
+        Title.Length > 0 ? Title
+        : SeasonId is not null ? $"Season {SeasonId}"
+        : $"Movie {MovieId}";
+
+    /// <summary>A stable key for the panel's list: one per season or movie.</summary>
+    [JsonIgnore]
+    public string Target => SeasonId is not null ? $"season:{SeasonId}" : $"movie:{MovieId}";
+
     private ISegmentAnalysisService? _analysis;
     private ISegmentAnalysisState? _state;
     private ILogger<SegmentAnalysisJob>? _logger;
@@ -50,9 +65,11 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
 
     public SegmentAnalysisJob() { }
 
-    public static SegmentAnalysisJob ForSeason(int seasonId) => new() { SeasonId = seasonId };
+    public static SegmentAnalysisJob ForSeason(int seasonId, string title = "") =>
+        new() { SeasonId = seasonId, Title = title };
 
-    public static SegmentAnalysisJob ForMovie(int movieId) => new() { MovieId = movieId };
+    public static SegmentAnalysisJob ForMovie(int movieId, string title = "") =>
+        new() { MovieId = movieId, Title = title };
 
     public void InjectStorageServices(IServiceProvider serviceProvider)
     {
