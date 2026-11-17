@@ -19,8 +19,11 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// <param name="Name">As the dashboard shows it.</param>
 /// <param name="IsDefault">Linked to a folder of this library as its default.</param>
 /// <param name="MaxHeight">
-/// The tallest video this preset can produce: the highest tier of an Auto
-/// ladder, the highest rung of a Manual one, or <c>Video.Height</c> without a
-/// ladder. Null when the preset keeps the source's size, or makes no video.
+/// The height class of the tallest output this preset makes, the way release
+/// resolutions are named (1080 is the 1920-wide class): the highest tier of an
+/// Auto ladder, the highest rung of a Manual one, or <c>Video.Height</c>
+/// without a ladder. A source with another aspect ratio is scaled by width, so
+/// its real pixel height can differ. Null when the preset keeps the source's
+/// size, or makes no video.
 /// </param>
 public record PluginEncodingPreset(string Id, string Name, bool IsDefault, int? MaxHeight);

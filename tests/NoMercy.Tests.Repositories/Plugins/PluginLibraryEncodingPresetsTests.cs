@@ -71,7 +71,10 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
         Ulid builtin = Builtin(BuiltinPresets.DefaultStreamingPresetName).Id;
         Ulid library = await LibraryWithFoldersAsync(null, [(builtin, true)]);
 
-        PluginEncodingPreset preset = (await PresetsOfAsync(library)).Should().ContainSingle().Subject;
+        PluginEncodingPreset preset = (await PresetsOfAsync(library))
+            .Should()
+            .ContainSingle()
+            .Subject;
 
         preset.Id.Should().Be(builtin.ToString());
         preset.Name.Should().Be(BuiltinPresets.DefaultStreamingPresetName);
@@ -95,10 +98,101 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
         );
         Ulid library = await LibraryWithFoldersAsync(null, [(manual, false)]);
 
-        PluginEncodingPreset preset = (await PresetsOfAsync(library)).Should().ContainSingle().Subject;
+        PluginEncodingPreset preset = (await PresetsOfAsync(library))
+            .Should()
+            .ContainSingle()
+            .Subject;
 
         preset.MaxHeight.Should().Be(1080);
         preset.IsDefault.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// An Auto ladder that already carries several rungs is run as Manual by
+    /// the planner, so its tiers (here up to 2160) do not count.
+    /// </summary>
+    [Fact]
+    public async Task An_auto_ladder_with_several_rungs_reaches_its_highest_rung()
+    {
+        EncodingProfile streaming = StreamingProfile();
+        Ulid preset = await PresetAsync(
+            "Auto with rungs",
+            streaming with
+            {
+                Ladder = streaming.Ladder! with { Rungs = [Rung(1280, 720), Rung(1920, 1080)] },
+            }
+        );
+
+        (await MaxHeightOfAsync(preset)).Should().Be(1080);
+    }
+
+    /// <summary>
+    /// The legacy generator behind an Auto ladder with no config climbs to the
+    /// source's own height, so there is no ceiling to report; the reference
+    /// output's 1080 is not one.
+    /// </summary>
+    [Fact]
+    public async Task An_auto_ladder_without_a_config_reaches_no_fixed_height()
+    {
+        Ulid preset = await PresetAsync(
+            "Auto without config",
+            SingleOutputProfile(1080) with
+            {
+                Ladder = new() { Mode = LadderMode.Auto, AutoConfig = null },
+            }
+        );
+
+        (await MaxHeightOfAsync(preset)).Should().BeNull();
+    }
+
+    /// <summary>With no reference output and no rung, the expander makes no video at all.</summary>
+    [Fact]
+    public async Task An_auto_ladder_with_no_video_and_no_rung_reaches_no_height()
+    {
+        Ulid preset = await PresetAsync(
+            "Auto without video",
+            StreamingProfile() with
+            {
+                Video = null,
+            }
+        );
+
+        (await MaxHeightOfAsync(preset)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// One rung is the reference the tiers are built from, not a ladder of its
+    /// own, so the tiers' top (2160) is the ceiling rather than the rung's 720.
+    /// </summary>
+    [Fact]
+    public async Task An_auto_ladder_with_one_rung_reaches_its_highest_tier()
+    {
+        EncodingProfile streaming = StreamingProfile();
+        Ulid preset = await PresetAsync(
+            "Auto with one rung",
+            streaming with
+            {
+                Video = null,
+                Ladder = streaming.Ladder! with { Rungs = [Rung(1280, 720)] },
+            }
+        );
+
+        (await MaxHeightOfAsync(preset)).Should().Be(2160);
+    }
+
+    /// <summary>A Manual ladder with no rungs runs the single Video output.</summary>
+    [Fact]
+    public async Task A_manual_ladder_without_rungs_reaches_the_video_height()
+    {
+        Ulid preset = await PresetAsync(
+            "Manual without rungs",
+            SingleOutputProfile(1080) with
+            {
+                Ladder = new() { Mode = LadderMode.Manual, Rungs = [] },
+            }
+        );
+
+        (await MaxHeightOfAsync(preset)).Should().Be(1080);
     }
 
     [Fact]
@@ -141,7 +235,10 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
         Ulid child = await PresetAsync("Override", """{"Name":"Override"}""", parent);
         Ulid library = await LibraryWithFoldersAsync(null, [(child, true)]);
 
-        PluginEncodingPreset preset = (await PresetsOfAsync(library)).Should().ContainSingle().Subject;
+        PluginEncodingPreset preset = (await PresetsOfAsync(library))
+            .Should()
+            .ContainSingle()
+            .Subject;
 
         preset.Name.Should().Be("Override");
         preset.MaxHeight.Should().Be(1440);
@@ -153,7 +250,10 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
         Ulid shared = await PresetAsync("Shared", SingleOutputProfile(720));
         Ulid library = await LibraryWithFoldersAsync(null, [(shared, false)], [(shared, true)]);
 
-        PluginEncodingPreset preset = (await PresetsOfAsync(library)).Should().ContainSingle().Subject;
+        PluginEncodingPreset preset = (await PresetsOfAsync(library))
+            .Should()
+            .ContainSingle()
+            .Subject;
 
         preset.Id.Should().Be(shared.ToString());
         preset.IsDefault.Should().BeTrue();
@@ -180,10 +280,48 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
         Ulid second = await PresetAsync("Second", SingleOutputProfile(1080));
         Ulid library = await LibraryWithFoldersAsync(second, [(first, true), (second, false)]);
 
-        PluginEncodingPreset preset = (await PresetsOfAsync(library)).Should().ContainSingle().Subject;
+        PluginEncodingPreset preset = (await PresetsOfAsync(library))
+            .Should()
+            .ContainSingle()
+            .Subject;
 
         preset.Id.Should().Be(second.ToString());
         preset.MaxHeight.Should().Be(1080);
+    }
+
+    /// <summary>
+    /// The library's own preset is linked to none of its folders, so an encode
+    /// runs nothing, and the answer says so rather than falling back to the
+    /// presets that are linked.
+    /// </summary>
+    [Fact]
+    public async Task A_library_preset_linked_to_none_of_its_folders_answers_an_empty_list()
+    {
+        Ulid linked = await PresetAsync("Linked", SingleOutputProfile(720));
+        Ulid unlinked = await PresetAsync("Unlinked", SingleOutputProfile(1080));
+        Ulid library = await LibraryWithFoldersAsync(unlinked, [(linked, true)]);
+
+        (await PresetsOfAsync(library)).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Two reads of one unchanged library are equal, so a plugin that spots
+    /// changes by comparing what it read last time sees none.
+    /// </summary>
+    [Fact]
+    public async Task Two_reads_of_an_unchanged_library_are_equal()
+    {
+        Ulid first = await PresetAsync("First", SingleOutputProfile(720));
+        Ulid second = await PresetAsync("Second", SingleOutputProfile(1080));
+        Ulid library = await LibraryWithFoldersAsync(null, [(first, true), (second, false)]);
+
+        PluginLibrary before = await LibraryAsync(library);
+        PluginLibrary after = await LibraryAsync(library);
+
+        after.Should().NotBeSameAs(before);
+        after.EncodingPresets.Should().NotBeSameAs(before.EncodingPresets);
+        after.Should().Be(before);
+        after.GetHashCode().Should().Be(before.GetHashCode());
     }
 
     /// <summary>A broken preset is skipped by the encoder too, and must not fail the read.</summary>
@@ -200,7 +338,12 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
     [Fact]
     public async Task A_library_whose_folders_link_no_preset_answers_an_empty_list()
     {
-        Ulid library = await LibraryWithFoldersAsync(null, [[]]);
+        Ulid library = await LibraryWithFoldersAsync(
+            null,
+            [
+                [],
+            ]
+        );
 
         (await PresetsOfAsync(library)).Should().BeEmpty();
     }
@@ -221,14 +364,7 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
             .Setup(x => x.Holds(pluginId, PluginGrantKind.LibraryWrite, library.ToString()))
             .Returns(true);
 
-        PluginLibraryWriter writer = new(
-            pluginId,
-            _factory.Object,
-            new PluginLibraryProjection(_factory.Object),
-            Mock.Of<IStorageFactory>(),
-            grants.Object,
-            NullLogger.Instance
-        );
+        PluginLibraryWriter writer = Writer(pluginId, grants.Object);
 
         PluginLibrary writable = (await writer.GetWritableLibrariesAsync())
             .Should()
@@ -241,6 +377,72 @@ public sealed class PluginLibraryEncodingPresetsTests : IDisposable
         writable.EncodingPresets.Should().BeEquivalentTo(read.EncodingPresets);
         writable.EncodingPresets.Should().ContainSingle().Which.MaxHeight.Should().Be(1080);
     }
+
+    /// <summary>
+    /// The cheap check an import makes agrees with the list: a granted library
+    /// that exists, and nothing else.
+    /// </summary>
+    [Fact]
+    public async Task The_single_library_write_check_agrees_with_the_writable_list()
+    {
+        Ulid granted = await LibraryWithFoldersAsync(
+            null,
+            [
+                [],
+            ]
+        );
+        Ulid ungranted = await LibraryWithFoldersAsync(
+            null,
+            [
+                [],
+            ]
+        );
+        Ulid deleted = Ulid.NewUlid();
+        Ulid pluginId = Ulid.NewUlid();
+
+        Mock<IPluginGrantStore> grants = new();
+        grants
+            .Setup(x => x.Holds(pluginId, PluginGrantKind.LibraryWrite, It.IsAny<string>()))
+            .Returns(
+                (Ulid _, string _, string value) =>
+                    value == granted.ToString() || value == deleted.ToString()
+            );
+
+        PluginLibraryWriter writer = Writer(pluginId, grants.Object);
+
+        (await writer.MayWriteToLibraryAsync(granted.ToString())).Should().BeTrue();
+        (await writer.MayWriteToLibraryAsync(ungranted.ToString())).Should().BeFalse();
+        (await writer.MayWriteToLibraryAsync(deleted.ToString())).Should().BeFalse();
+        (await writer.MayWriteToLibraryAsync(granted.ToString().ToLowerInvariant()))
+            .Should()
+            .BeFalse("the list answers the id in its own spelling only");
+        (await writer.MayWriteToLibraryAsync("not-a-library")).Should().BeFalse();
+
+        (await writer.GetWritableLibrariesAsync())
+            .Select(library => library.Id)
+            .Should()
+            .Equal(granted.ToString());
+    }
+
+    private PluginLibraryWriter Writer(Ulid pluginId, IPluginGrantStore grants) =>
+        new(
+            pluginId,
+            _factory.Object,
+            new PluginLibraryProjection(_factory.Object),
+            Mock.Of<IStorageFactory>(),
+            grants,
+            NullLogger.Instance
+        );
+
+    private async Task<int?> MaxHeightOfAsync(Ulid preset)
+    {
+        Ulid library = await LibraryWithFoldersAsync(null, [(preset, true)]);
+
+        return (await PresetsOfAsync(library)).Should().ContainSingle().Subject.MaxHeight;
+    }
+
+    private async Task<PluginLibrary> LibraryAsync(Ulid library) =>
+        (await Query().GetLibrariesAsync()).Single(row => row.Id == library.ToString());
 
     private async Task<IReadOnlyList<PluginEncodingPreset>> PresetsOfAsync(Ulid library)
     {

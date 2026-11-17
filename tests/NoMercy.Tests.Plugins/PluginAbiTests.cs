@@ -146,6 +146,45 @@ public class PluginAbiTests
         library.EncodingPresets.Should().NotBeNull().And.BeEmpty();
     }
 
+    /// <summary>
+    /// A plugin built against 12.10 spots a changed library with <c>==</c>, a
+    /// set or a dictionary key. The presets list must compare by its items, or
+    /// every read of an unchanged library looks like a change.
+    /// </summary>
+    [Fact]
+    public void Libraries_with_equal_presets_are_equal_and_a_changed_preset_is_not()
+    {
+        PluginLibrary first = Shows(new PluginEncodingPreset("p1", "Streaming", true, 2160));
+        PluginLibrary second = Shows(new PluginEncodingPreset("p1", "Streaming", true, 2160));
+        PluginLibrary changed = Shows(new PluginEncodingPreset("p1", "Streaming", true, 1080));
+        PluginLibrary fewer = Shows();
+
+        first.Should().Be(second);
+        (first == second).Should().BeTrue();
+        first.GetHashCode().Should().Be(second.GetHashCode());
+        new HashSet<PluginLibrary> { first }
+            .Contains(second)
+            .Should()
+            .BeTrue();
+
+        first.Should().NotBe(changed);
+        first.Should().NotBe(fewer);
+        first.Should().NotBe(first with { Title = "Other" });
+    }
+
+    /// <summary>A server or a plugin that sets the list to null still reads as no presets.</summary>
+    [Fact]
+    public void A_null_preset_list_reads_as_empty()
+    {
+        PluginLibrary library = new("shows", "Shows", "tv") { EncodingPresets = null! };
+
+        library.EncodingPresets.Should().NotBeNull().And.BeEmpty();
+        library.Should().Be(new PluginLibrary("shows", "Shows", "tv"));
+    }
+
+    private static PluginLibrary Shows(params PluginEncodingPreset[] presets) =>
+        new("shows", "Shows", "tv") { EncodingPresets = [.. presets] };
+
     [Fact]
     public void ScheduledJob_BuiltTheWayElevenZeroBuiltIt_CarriesItsValues()
     {
