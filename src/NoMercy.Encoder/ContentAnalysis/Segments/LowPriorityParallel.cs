@@ -46,7 +46,13 @@ internal static class LowPriorityParallel
                 {
                     while (!ct.IsCancellationRequested && Volatile.Read(ref failure) is null)
                     {
-                        while (paused?.Invoke() == true && !ct.IsCancellationRequested)
+                        // Stop pausing as soon as the run is over: cancelled, or
+                        // another thread failed and the whole match is lost.
+                        while (
+                            paused?.Invoke() == true
+                            && !ct.IsCancellationRequested
+                            && Volatile.Read(ref failure) is null
+                        )
                             Thread.Sleep(PausePoll);
 
                         int item = Interlocked.Increment(ref next);
