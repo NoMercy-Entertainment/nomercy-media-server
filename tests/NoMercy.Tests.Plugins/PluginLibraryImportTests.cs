@@ -146,6 +146,69 @@ public class PluginLibraryImportTests
         filed.Move.Should().BeTrue("a torrent still seeding must not be moved out from under it");
     }
 
+    /// <summary>
+    /// The server's writer answers "may this plugin write here" from the grant
+    /// and one row. The full list describes how every library is encoded, and
+    /// a bulk import must not pay for that once per file.
+    /// </summary>
+    [Theory]
+    [InlineData(Granted, true)]
+    [InlineData(Ungranted, false)]
+    public async Task A_writer_that_can_check_one_library_is_asked_that_instead_of_for_the_list(
+        string library,
+        bool filed
+    )
+    {
+        CheckingWriter writer = new(Granted);
+        RecordingScanner scanner = new();
+        PluginLibraryImport import = new(Torrent, writer, scanner, NullLogger.Instance);
+
+        PluginImportResult result = await import.RegisterAsync(Request(library: library));
+
+        result.Ok.Should().Be(filed);
+        scanner.Imported.Should().HaveCount(filed ? 1 : 0);
+        writer.Checked.Should().Equal(library);
+        writer.Listed.Should().Be(0);
+    }
+
+    private sealed class CheckingWriter(string writable)
+        : IPluginLibraryWriter,
+            IPluginLibraryWriteCheck
+    {
+        public List<string> Checked { get; } = [];
+
+        public int Listed { get; private set; }
+
+        public Task<bool> MayWriteToLibraryAsync(string libraryId, CancellationToken ct = default)
+        {
+            Checked.Add(libraryId);
+            return Task.FromResult(libraryId == writable);
+        }
+
+        public Task<IReadOnlyList<PluginLibrary>> GetWritableLibrariesAsync(
+            CancellationToken ct = default
+        )
+        {
+            Listed++;
+            return Task.FromResult<IReadOnlyList<PluginLibrary>>([
+                new PluginLibrary(writable, "Library", "movie"),
+            ]);
+        }
+
+        public Task<bool> CanWriteAsync(string path, CancellationToken ct = default) =>
+            Task.FromResult(true);
+
+        public Task RecycleAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task DeleteAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task MoveAsync(
+            string sourcePath,
+            string destinationPath,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+    }
+
     private sealed class StubWriter(bool canWrite, string[] writable) : IPluginLibraryWriter
     {
         public Task<IReadOnlyList<PluginLibrary>> GetWritableLibrariesAsync(

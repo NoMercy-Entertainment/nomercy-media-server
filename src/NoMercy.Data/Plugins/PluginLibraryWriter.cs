@@ -15,6 +15,7 @@ using NoMercy.Database;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Library;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;
@@ -43,7 +44,7 @@ public class PluginLibraryWriter(
     IStorageFactory storageFactory,
     IPluginGrantStore grants,
     ILogger logger
-) : IPluginLibraryWriter
+) : IPluginLibraryWriter, IPluginLibraryWriteCheck
 {
     public async Task<IReadOnlyList<PluginLibrary>> GetWritableLibrariesAsync(
         CancellationToken ct = default
@@ -57,6 +58,21 @@ public class PluginLibraryWriter(
                 grants.Holds(pluginId, PluginGrantKind.LibraryWrite, library.Id)
             ),
         ];
+    }
+
+    public async Task<bool> MayWriteToLibraryAsync(string libraryId, CancellationToken ct = default)
+    {
+        // The id has to be the library's own spelling of it, as the list
+        // answers it, so this and GetWritableLibrariesAsync never disagree.
+        if (!Ulid.TryParse(libraryId, out Ulid id) || id.ToString() != libraryId)
+            return false;
+
+        if (!grants.Holds(pluginId, PluginGrantKind.LibraryWrite, libraryId))
+            return false;
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        return await context.Libraries.AsNoTracking().AnyAsync(library => library.Id == id, ct);
     }
 
     public async Task<bool> CanWriteAsync(string path, CancellationToken ct = default)

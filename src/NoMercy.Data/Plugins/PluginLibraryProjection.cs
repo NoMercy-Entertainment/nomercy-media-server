@@ -18,7 +18,7 @@ using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 namespace NoMercy.Data.Plugins;
 
 /// <summary>
-/// Every library with the presets that encode it, the set
+/// Every library with the presets an encode of its files runs, the set
 /// <c>VideoEncodeJob</c> would run.
 /// <para>
 /// A preset counts when it is linked to any folder of the library, narrowed to
@@ -27,13 +27,17 @@ namespace NoMercy.Data.Plugins;
 /// preset that does not resolve is left out rather than thrown into a plugin.
 /// </para>
 /// <para>
-/// Three flat reads and the shaping in memory: a GroupBy/First projection is
-/// the SQLite APPLY trap this codebase avoids everywhere else.
+/// Flat reads and the shaping in memory: a GroupBy/First projection is the
+/// SQLite APPLY trap this codebase avoids everywhere else.
 /// </para>
 /// </summary>
 public sealed class PluginLibraryProjection(IDbContextFactory<MediaContext> contextFactory)
     : IPluginLibraryProjection
 {
+    // The resolver's own depth limit: a longer chain fails to resolve whatever
+    // is loaded, so reading further buys nothing.
+    private const int MaxInheritanceReads = 8;
+
     public async Task<List<PluginLibrary>> GetLibrariesAsync(CancellationToken ct = default)
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
@@ -65,15 +69,11 @@ public sealed class PluginLibraryProjection(IDbContextFactory<MediaContext> cont
             )
             .ToListAsync(ct);
 
-        Dictionary<Ulid, PresetRow> presets = await context
-            .EncodingPresets.AsNoTracking()
-            .Select(preset => new PresetRow(
-                preset.Id,
-                preset.Name,
-                preset.ProfileJson,
-                preset.ParentPresetId
-            ))
-            .ToDictionaryAsync(preset => preset.Id, ct);
+        Dictionary<Ulid, PresetRow> presets = await LinkedPresetsAsync(
+            context,
+            links.Select(link => link.PresetId),
+            ct
+        );
 
         PresetRowLookup lookup = new(presets);
         Dictionary<Ulid, ResolvedPreset?> resolved = [];
@@ -110,6 +110,51 @@ public sealed class PluginLibraryProjection(IDbContextFactory<MediaContext> cont
                 ],
             }),
         ];
+    }
+
+    /// <summary>
+    /// The linked presets and the parents they inherit from, and nothing else:
+    /// a server can hold many presets no folder uses, and every row read here
+    /// is JSON resolved for each library listing. One read per inheritance
+    /// level, which <see cref="MaxInheritanceReads"/> bounds the way the
+    /// resolver bounds the chain itself.
+    /// </summary>
+    private static async Task<Dictionary<Ulid, PresetRow>> LinkedPresetsAsync(
+        MediaContext context,
+        IEnumerable<Ulid> linkedIds,
+        CancellationToken ct
+    )
+    {
+        Dictionary<Ulid, PresetRow> presets = [];
+        List<Ulid> wanted = [.. linkedIds.Distinct()];
+
+        for (int read = 0; read < MaxInheritanceReads && wanted.Count > 0; read++)
+        {
+            List<PresetRow> rows = await context
+                .EncodingPresets.AsNoTracking()
+                .Where(preset => wanted.Contains(preset.Id))
+                .Select(preset => new PresetRow(
+                    preset.Id,
+                    preset.Name,
+                    preset.ProfileJson,
+                    preset.ParentPresetId
+                ))
+                .ToListAsync(ct);
+
+            foreach (PresetRow row in rows)
+                presets[row.Id] = row;
+
+            wanted =
+            [
+                .. rows.Where(row =>
+                        row.ParentPresetId is { } parent && !presets.ContainsKey(parent)
+                    )
+                    .Select(row => row.ParentPresetId!.Value)
+                    .Distinct(),
+            ];
+        }
+
+        return presets;
     }
 
     /// <summary>
@@ -161,7 +206,12 @@ public sealed class PluginLibraryProjection(IDbContextFactory<MediaContext> cont
 
         return preset is null
             ? null
-            : new PluginEncodingPreset(presetId.ToString(), preset.Name, isDefault, preset.MaxHeight);
+            : new PluginEncodingPreset(
+                presetId.ToString(),
+                preset.Name,
+                isDefault,
+                preset.MaxHeight
+            );
     }
 
     private static ResolvedPreset? Resolve(
