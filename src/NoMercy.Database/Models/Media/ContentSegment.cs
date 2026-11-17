@@ -68,7 +68,9 @@ public class ContentSegment
     /// <summary>
     /// How this segment landed in the database — "detector" for chromaprint
     /// auto-detection, "manual" for dashboard overrides, "import" for
-    /// community-provided data.
+    /// community-provided data, "chapters" for the file's chapter list. The
+    /// values and which one wins live in <c>NoMercy.Database.Segments</c>
+    /// (<c>ContentSegmentSource</c>, <c>ContentSegmentPrecedence</c>).
     /// </summary>
     [JsonProperty("source")]
     [MaxLength(32)]
