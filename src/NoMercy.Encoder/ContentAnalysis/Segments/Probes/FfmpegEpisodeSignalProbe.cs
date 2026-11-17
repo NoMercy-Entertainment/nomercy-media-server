@@ -51,6 +51,28 @@ public sealed class FfmpegEpisodeSignalProbe(
 
     public async Task<AudioSignals?> ReadAudioAsync(SegmentMediaSource source, CancellationToken ct)
     {
+        if (LanguageTag(source.AudioLanguage) is { } language)
+        {
+            // By language first; a file whose streams carry no such tag (or a
+            // different spelling of it) falls back to the stream index.
+            AudioSignals? byLanguage = await ReadAudioAsync(source, $"0:a:m:language:{language}", ct);
+            if (byLanguage is not null)
+                return byLanguage;
+        }
+
+        return await ReadAudioAsync(source, $"0:a:{source.AudioStreamIndex}", ct);
+    }
+
+    /// <summary>A language tag safe inside a filtergraph (letters only), or null.</summary>
+    internal static string? LanguageTag(string? language) =>
+        language is { Length: >= 2 and <= 8 } && language.All(char.IsAsciiLetter) ? language : null;
+
+    private async Task<AudioSignals?> ReadAudioAsync(
+        SegmentMediaSource source,
+        string audioStream,
+        CancellationToken ct
+    )
+    {
         string folder = CreateTempFolder();
         string fingerprintPath = storage.CombinePath(folder, "fp.raw");
         try
@@ -67,7 +89,7 @@ public sealed class FfmpegEpisodeSignalProbe(
                 "-i",
                 input.Path,
                 "-filter_complex",
-                $"[0:a:{source.AudioStreamIndex}]asplit[a1][a2];[a1]silencedetect=n=-50dB:d=0.3[ao]",
+                $"[{audioStream}]asplit[a1][a2];[a1]silencedetect=n=-50dB:d=0.3[ao]",
                 "-map",
                 "[ao]",
                 "-f",

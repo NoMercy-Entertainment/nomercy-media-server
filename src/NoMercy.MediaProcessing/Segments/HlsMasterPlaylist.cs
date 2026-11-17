@@ -9,17 +9,18 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.RegularExpressions;
+using NoMercy.MediaProcessing.Files.AudioTracks;
 
 namespace NoMercy.MediaProcessing.Segments;
 
 /// <summary>
 /// The renditions an encoded episode's master playlist lists: video variants
-/// (EXT-X-STREAM-INF) and audio renditions (EXT-X-MEDIA TYPE=AUDIO), as URIs
-/// relative to the master. The analysis reads one audio rendition and one video
-/// variant directly: the audio playlist alone is a few MB for a 22 min episode.
+/// (EXT-X-STREAM-INF) and audio renditions (read by
+/// <see cref="HlsAudioRenditionReader"/>), as URIs relative to the master. The
+/// analysis reads one audio rendition and one video variant directly: the audio
+/// playlist alone is a few MB for a 22 min episode.
 /// </summary>
-public sealed partial record HlsMasterPlaylist(
+public sealed record HlsMasterPlaylist(
     IReadOnlyList<string> VideoUris,
     IReadOnlyList<HlsAudioRendition> Audio
 )
@@ -27,7 +28,6 @@ public sealed partial record HlsMasterPlaylist(
     public static HlsMasterPlaylist Parse(string text)
     {
         List<string> video = [];
-        List<HlsAudioRendition> audio = [];
         bool variantNext = false;
         foreach (string raw in text.Split('\n'))
         {
@@ -41,14 +41,6 @@ public sealed partial record HlsMasterPlaylist(
                 continue;
             }
 
-            if (line.StartsWith("#EXT-X-MEDIA:", StringComparison.Ordinal) && line.Contains("TYPE=AUDIO", StringComparison.Ordinal))
-            {
-                string? uri = Attribute(line, "URI");
-                if (uri is not null)
-                    audio.Add(new(Attribute(line, "LANGUAGE"), uri, Attribute(line, "DEFAULT") == "YES"));
-                continue;
-            }
-
             if (line.StartsWith('#'))
                 continue;
 
@@ -57,20 +49,6 @@ public sealed partial record HlsMasterPlaylist(
             variantNext = false;
         }
 
-        return new(video, audio);
+        return new(video, HlsAudioRenditionReader.Read(text));
     }
-
-    private static string? Attribute(string line, string name)
-    {
-        foreach (Match match in AttributeRegex().Matches(line))
-        {
-            if (match.Groups["name"].Value == name)
-                return match.Groups["quoted"].Success ? match.Groups["quoted"].Value : match.Groups["bare"].Value;
-        }
-
-        return null;
-    }
-
-    [GeneratedRegex("""(?<name>[A-Z0-9-]+)=(?:"(?<quoted>[^"]*)"|(?<bare>[^,]*))""", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex AttributeRegex();
 }

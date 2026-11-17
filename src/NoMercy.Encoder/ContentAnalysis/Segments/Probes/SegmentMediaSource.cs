@@ -22,9 +22,15 @@ namespace NoMercy.Encoder.ContentAnalysis.Segments.Probes;
 /// Which audio stream of <paramref name="AudioPath"/> to analyse (<c>0:a:N</c>).
 /// Every episode of a season must use the same language: themes are matched by sound.
 /// </param>
+/// <param name="AudioLanguage">
+/// For a file with several audio streams: the language tag of the stream to
+/// read (FFmpeg's <c>0:a:m:language:xxx</c>); <paramref name="AudioStreamIndex"/>
+/// is the fallback when no stream carries it. Null reads by index only.
+/// </param>
 public sealed record SegmentMediaSource(
     IStorage Storage,
     string AudioPath,
     int AudioStreamIndex,
-    string VideoPath
+    string VideoPath,
+    string? AudioLanguage = null
 );

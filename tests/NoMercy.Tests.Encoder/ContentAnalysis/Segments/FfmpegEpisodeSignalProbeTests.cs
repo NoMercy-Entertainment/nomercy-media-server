@@ -73,6 +73,57 @@ public class FfmpegEpisodeSignalProbeTests
     }
 
     [Fact]
+    public async Task ReadAudio_OfASingleFile_PicksTheStreamByLanguage_AndFallsBackToItsIndex()
+    {
+        List<string> graphs = [];
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<TimeSpan>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns<string, string[], TimeSpan, Action<string>?, Action<string>?, string?, CancellationToken, Action<int>?>(
+                (_, args, _, _, stderr, _, _, _) =>
+                {
+                    string graph = args[Array.IndexOf(args, "-filter_complex") + 1];
+                    graphs.Add(graph);
+                    if (graph.Contains("language"))
+                        return Task.FromResult(new ProcessResult(1, "", "matches no streams", TimeSpan.Zero));
+                    File.WriteAllBytes(args[^1], new byte[8]);
+                    stderr?.Invoke("  Duration: 00:42:00.00, start: 0.000000, bitrate: 0 kb/s");
+                    return Task.FromResult(new ProcessResult(0, "", "", TimeSpan.Zero));
+                }
+            );
+        SegmentMediaSource file = new(_storage, "/media/movie.mkv", 2, "/media/movie.mkv", "jpn");
+
+        AudioSignals? audio = await Probe(runner).ReadAudioAsync(file, CancellationToken.None);
+
+        audio.Should().NotBeNull();
+        graphs.Should().HaveCount(2);
+        graphs[0].Should().StartWith("[0:a:m:language:jpn]");
+        graphs[1].Should().StartWith("[0:a:2]");
+    }
+
+    [Theory]
+    [InlineData("jpn", "jpn")]
+    [InlineData("en", "en")]
+    [InlineData("j]n;x", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void LanguageTags_InTheFiltergraph_AreLettersOnly(string? language, string? tag)
+    {
+        FfmpegEpisodeSignalProbe.LanguageTag(language).Should().Be(tag);
+    }
+
+    [Fact]
     public async Task ReadAudio_FailedRun_IsNull()
     {
         Mock<IProcessRunner> runner = Runner((_, _) => { }, exitCode: 1);

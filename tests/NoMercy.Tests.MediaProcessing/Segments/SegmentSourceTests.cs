@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.MediaProcessing.Files.AudioTracks;
 using NoMercy.MediaProcessing.Segments;
 
 namespace NoMercy.Tests.MediaProcessing.Segments;
@@ -34,14 +35,54 @@ public class SegmentSourceTests
     {
         HlsMasterPlaylist master = HlsMasterPlaylist.Parse(Master);
 
-        master.VideoUris.Should().Equal(
-            "video_1920x1429_SDR/video_1920x1429_SDR.m3u8",
-            "video_1280x952_SDR/video_1280x952_SDR.m3u8"
-        );
-        master.Audio.Should().Equal(
-            new HlsAudioRendition("eng", "audio_eng_aac/audio_eng_aac.m3u8", true),
-            new HlsAudioRendition("jpn", "audio_jpn_aac/audio_jpn_aac.m3u8", false)
-        );
+        master
+            .VideoUris.Should()
+            .Equal(
+                "video_1920x1429_SDR/video_1920x1429_SDR.m3u8",
+                "video_1280x952_SDR/video_1280x952_SDR.m3u8"
+            );
+        master
+            .Audio.Should()
+            .Equal(
+                new HlsAudioRendition("audio", "audio_eng_aac/audio_eng_aac.m3u8", "eng", true),
+                new HlsAudioRendition("audio", "audio_jpn_aac/audio_jpn_aac.m3u8", "jpn", false)
+            );
+    }
+
+    [Fact]
+    public void SingleFile_ReadsTheStreamInTheSeasonsLanguage()
+    {
+        List<(string Language, bool IsDefault)> tracks =
+        [
+            ("eng", true),
+            ("jpn", false),
+            ("ger", false),
+        ];
+
+        SingleFileAudio.Choose(tracks, "jpn").Should().Be(new SingleFileAudio("jpn", 1));
+        SingleFileAudio.Choose(tracks, "ja").Should().Be(new SingleFileAudio("jpn", 1));
+    }
+
+    [Fact]
+    public void SingleFile_WithoutThatLanguage_FallsBackToTheDefaultThenTheFirstStream()
+    {
+        SingleFileAudio
+            .Choose([("eng", false), ("ger", true)], "jpn")
+            .Should()
+            .Be(new SingleFileAudio(null, 1));
+        SingleFileAudio
+            .Choose([("eng", false), ("ger", false)], "jpn")
+            .Should()
+            .Be(new SingleFileAudio(null, 0));
+        SingleFileAudio.Choose([], null).Should().Be(new SingleFileAudio(null, 0));
+    }
+
+    [Fact]
+    public void SingleFile_WithoutTrackRows_UsesTheStoredLanguageList()
+    {
+        SegmentSourceResolver.StoredLanguages("[\"jpn\",\"eng\"]").Should().Equal("jpn", "eng");
+        SegmentSourceResolver.StoredLanguages("").Should().BeEmpty();
+        SegmentSourceResolver.StoredLanguages("not json").Should().BeEmpty();
     }
 
     [Theory]
@@ -60,7 +101,12 @@ public class SegmentSourceTests
     public void Season_UsesTheOriginalLanguage_WhenMostEpisodesHaveIt()
     {
         // Anime: the Japanese track, even when English is the default.
-        List<IReadOnlyList<string>> episodes = [["eng", "jpn"], ["eng", "jpn"], ["eng"]];
+        List<IReadOnlyList<string>> episodes =
+        [
+            ["eng", "jpn"],
+            ["eng", "jpn"],
+            ["eng"],
+        ];
 
         AudioLanguagePicker.Pick("ja", episodes).Should().Be("jpn");
     }
@@ -68,7 +114,13 @@ public class SegmentSourceTests
     [Fact]
     public void Season_UsesTheMostCommonLanguage_OtherwiseOneForAll()
     {
-        List<IReadOnlyList<string>> episodes = [["eng"], ["eng", "ger"], ["ger"], ["eng"]];
+        List<IReadOnlyList<string>> episodes =
+        [
+            ["eng"],
+            ["eng", "ger"],
+            ["ger"],
+            ["eng"],
+        ];
 
         AudioLanguagePicker.Pick("ja", episodes).Should().Be("eng");
         AudioLanguagePicker.Pick(null, []).Should().BeNull();

@@ -11,9 +11,11 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Encoder.ContentAnalysis.Segments.Probes;
+using NoMercy.MediaProcessing.Files.AudioTracks;
 using NoMercy.Storage;
 
 namespace NoMercy.MediaProcessing.Segments;
@@ -39,12 +41,23 @@ public sealed class SegmentSourceResolver(
         int? MovieId,
         string Share,
         string HostFolder,
-        string Filename
+        string Filename,
+        string Languages
     );
 
-    private sealed record Candidate(FileRow File, IStorage Storage, string Path, IReadOnlyList<string> Languages, HlsMasterPlaylist? Master, List<string> TrackLanguages);
+    private sealed record Candidate(
+        FileRow File,
+        IStorage Storage,
+        string Path,
+        IReadOnlyList<string> Languages,
+        HlsMasterPlaylist? Master,
+        List<(string Language, bool IsDefault)> Tracks
+    );
 
-    public async Task<List<ResolvedSegmentSource>> ResolveSeasonAsync(int seasonId, CancellationToken ct)
+    public async Task<List<ResolvedSegmentSource>> ResolveSeasonAsync(
+        int seasonId,
+        CancellationToken ct
+    )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
         string? originalLanguage = await context
@@ -62,19 +75,32 @@ public sealed class SegmentSourceResolver(
         List<FileRow> rows = await context
             .VideoFiles.AsNoTracking()
             .Where(v => v.EpisodeId != null && episodeIds.Contains(v.EpisodeId.Value))
-            .Select(v => new FileRow(v.Id, v.EpisodeId, v.MovieId, v.Share, v.HostFolder, v.Filename))
+            .Select(v => new FileRow(
+                v.Id,
+                v.EpisodeId,
+                v.MovieId,
+                v.Share,
+                v.HostFolder,
+                v.Filename,
+                v.Languages
+            ))
             .ToListAsync(ct);
 
         // Newest file per episode, in episode order (grouped in memory: no APPLY on SQLite).
         List<FileRow> newest =
         [
             .. episodeIds
-                .Select(id => rows.Where(r => r.EpisodeId == id).OrderByDescending(r => r.Id).FirstOrDefault())
+                .Select(id =>
+                    rows.Where(r => r.EpisodeId == id).OrderByDescending(r => r.Id).FirstOrDefault()
+                )
                 .OfType<FileRow>(),
         ];
 
         List<Candidate> candidates = await CandidatesAsync(context, newest, ct);
-        string? language = AudioLanguagePicker.Pick(originalLanguage, [.. candidates.Select(c => c.Languages)]);
+        string? language = AudioLanguagePicker.Pick(
+            originalLanguage,
+            [.. candidates.Select(c => c.Languages)]
+        );
         return [.. candidates.Select(c => Resolve(c, language)).OfType<ResolvedSegmentSource>()];
     }
 
@@ -89,20 +115,41 @@ public sealed class SegmentSourceResolver(
         List<FileRow> rows = await context
             .VideoFiles.AsNoTracking()
             .Where(v => v.MovieId == movieId)
-            .Select(v => new FileRow(v.Id, v.EpisodeId, v.MovieId, v.Share, v.HostFolder, v.Filename))
+            .Select(v => new FileRow(
+                v.Id,
+                v.EpisodeId,
+                v.MovieId,
+                v.Share,
+                v.HostFolder,
+                v.Filename,
+                v.Languages
+            ))
             .ToListAsync(ct);
         FileRow? newest = rows.OrderByDescending(r => r.Id).FirstOrDefault();
         if (newest is null)
             return null;
 
         List<Candidate> candidates = await CandidatesAsync(context, [newest], ct);
-        string? language = AudioLanguagePicker.Pick(originalLanguage, [.. candidates.Select(c => c.Languages)]);
+        string? language = AudioLanguagePicker.Pick(
+            originalLanguage,
+            [.. candidates.Select(c => c.Languages)]
+        );
         return candidates.Select(c => Resolve(c, language)).FirstOrDefault(r => r is not null);
     }
 
-    private async Task<List<Candidate>> CandidatesAsync(MediaContext context, List<FileRow> files, CancellationToken ct)
+    private async Task<List<Candidate>> CandidatesAsync(
+        MediaContext context,
+        List<FileRow> files,
+        CancellationToken ct
+    )
     {
-        List<Ulid> folderIds = [.. files.Select(f => Ulid.TryParse(f.Share, out Ulid id) ? id : Ulid.Empty).Where(id => id != Ulid.Empty).Distinct()];
+        List<Ulid> folderIds =
+        [
+            .. files
+                .Select(f => Ulid.TryParse(f.Share, out Ulid id) ? id : Ulid.Empty)
+                .Where(id => id != Ulid.Empty)
+                .Distinct(),
+        ];
         Dictionary<Ulid, Folder> folders = await context
             .Folders.AsNoTracking()
             .Include(f => f.Driver)
@@ -110,15 +157,21 @@ public sealed class SegmentSourceResolver(
             .ToDictionaryAsync(f => f.Id, ct);
 
         List<Ulid> fileIds = [.. files.Select(f => f.Id)];
-        List<(Ulid VideoFileId, Ulid Id, string Language)> tracks =
+        List<(Ulid VideoFileId, Ulid Id, string Language, bool IsDefault)> tracks =
         [
             .. (
                 await context
                     .VideoFileAudioTracks.AsNoTracking()
                     .Where(t => fileIds.Contains(t.VideoFileId))
-                    .Select(t => new { t.VideoFileId, t.Id, t.Language })
+                    .Select(t => new
+                    {
+                        t.VideoFileId,
+                        t.Id,
+                        t.Language,
+                        t.IsDefault,
+                    })
                     .ToListAsync(ct)
-            ).Select(t => (t.VideoFileId, t.Id, t.Language)),
+            ).Select(t => (t.VideoFileId, t.Id, t.Language, t.IsDefault)),
         ];
 
         List<Candidate> candidates = [];
@@ -135,18 +188,25 @@ public sealed class SegmentSourceResolver(
                 continue;
             }
 
-            List<string> trackLanguages =
+            // Stream order: track rows are written in it; without rows, the file's
+            // language list (no default known).
+            List<(string Language, bool IsDefault)> fileTracks =
             [
-                .. tracks.Where(t => t.VideoFileId == file.Id).OrderBy(t => t.Id).Select(t => t.Language),
+                .. tracks
+                    .Where(t => t.VideoFileId == file.Id)
+                    .OrderBy(t => t.Id)
+                    .Select(t => (t.Language, t.IsDefault)),
             ];
+            if (fileTracks.Count == 0)
+                fileTracks = [.. StoredLanguages(file.Languages).Select(l => (l, false))];
             HlsMasterPlaylist? master = null;
             if (path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
                 master = HlsMasterPlaylist.Parse(await storage.ReadAllTextAsync(path, ct));
 
             List<string> languages = master is null
-                ? trackLanguages
-                : [.. master.Audio.Select(a => a.Language).OfType<string>()];
-            candidates.Add(new(file, storage, path, languages, master, trackLanguages));
+                ? [.. fileTracks.Select(t => t.Language)]
+                : [.. master.Audio.Select(a => a.Language)];
+            candidates.Add(new(file, storage, path, languages, master, fileTracks));
         }
 
         return candidates;
@@ -178,22 +238,55 @@ public sealed class SegmentSourceResolver(
             );
         }
 
-        int index = candidate.TrackLanguages.FindIndex(l => AudioLanguagePicker.Same(l, language));
+        SingleFileAudio audioStream = SingleFileAudio.Choose(candidate.Tracks, language);
         return new(
             file.EpisodeId,
             file.MovieId,
-            new(candidate.Storage, candidate.Path, Math.Max(0, index), candidate.Path)
+            new(
+                candidate.Storage,
+                candidate.Path,
+                audioStream.Index,
+                candidate.Path,
+                audioStream.Language
+            )
         );
+    }
+
+    /// <summary>VideoFile.Languages: a JSON array of the file's audio languages.</summary>
+    internal static List<string> StoredLanguages(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+        try
+        {
+            return
+            [
+                .. (JsonConvert.DeserializeObject<string[]>(json) ?? []).Where(l =>
+                    !string.IsNullOrWhiteSpace(l)
+                ),
+            ];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private IStorage? StorageFor(FileRow file, Dictionary<Ulid, Folder> folders)
     {
-        if (!Ulid.TryParse(file.Share, out Ulid folderId) || !folders.TryGetValue(folderId, out Folder? folder))
+        if (
+            !Ulid.TryParse(file.Share, out Ulid folderId)
+            || !folders.TryGetValue(folderId, out Folder? folder)
+        )
             return null;
 
         if (
             folder.Driver is not null
-            && !string.Equals(folder.Driver.Type, LocalDriverType, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(
+                folder.Driver.Type,
+                LocalDriverType,
+                StringComparison.OrdinalIgnoreCase
+            )
         )
         {
             logger.LogInformation(
