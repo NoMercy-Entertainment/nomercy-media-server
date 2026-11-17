@@ -7,6 +7,8 @@
 - [`encoder-errors.md`](encoder-errors.md) — the catalog of every
   `EncoderRuleId` / `EncoderRuntimeErrorId` constant the encoder pipeline can
   emit.
+- [`segments.md`](segments.md) — for client teams: content segment sources,
+  which one wins, confidence, `credits_start` and `content_end`.
 - [`plugins/manifest.md`](plugins/manifest.md) — the fields of a plugin's
   `plugin.json`, its dependencies and its translations.
 - [`plugins/migration.md`](plugins/migration.md) — moving a plugin built
