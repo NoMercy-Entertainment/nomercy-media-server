@@ -648,6 +648,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<ISegmentSourceResolver, SegmentSourceResolver>();
         services.AddScoped<ISegmentAnalysisService, SegmentAnalysisService>();
         services.AddSingleton<ISegmentAnalysisState, SegmentAnalysisState>();
+        services.AddSingleton<ISegmentAnalysisLocks, SegmentAnalysisLocks>();
         services.AddScoped<HomeService>();
         services.AddScoped<RecommendationService>();
         // Singleton: the ingest-key registry is shared across the scoped

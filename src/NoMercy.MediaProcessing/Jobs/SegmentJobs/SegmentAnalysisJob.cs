@@ -61,6 +61,7 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
 
     private ISegmentAnalysisService? _analysis;
     private ISegmentAnalysisState? _state;
+    private ISegmentAnalysisLocks? _locks;
     private ILogger<SegmentAnalysisJob>? _logger;
     private CancellationToken _stopping = CancellationToken.None;
 
@@ -76,6 +77,7 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
     {
         _analysis = serviceProvider.GetService<ISegmentAnalysisService>();
         _state = serviceProvider.GetService<ISegmentAnalysisState>();
+        _locks = serviceProvider.GetService<ISegmentAnalysisLocks>();
         _logger = serviceProvider.GetService<ILogger<SegmentAnalysisJob>>();
         _stopping =
             serviceProvider.GetService<IHostApplicationLifetime>()?.ApplicationStopping
@@ -87,20 +89,26 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
         if (_analysis is null)
             return;
 
-        (SegmentAnalysisTarget target, int id) = SeasonId is { } seasonId
-            ? (SegmentAnalysisTarget.Season, seasonId)
-            : MovieId is { } movieId
-                ? (SegmentAnalysisTarget.Movie, movieId)
-                : (SegmentAnalysisTarget.Season, -1);
+        (SegmentAnalysisTarget target, int id) =
+            SeasonId is { } seasonId ? (SegmentAnalysisTarget.Season, seasonId)
+            : MovieId is { } movieId ? (SegmentAnalysisTarget.Movie, movieId)
+            : (SegmentAnalysisTarget.Season, -1);
         if (id < 0)
             return;
+
+        // A scheduled and an on-demand job for one item can both be queued:
+        // the second waits for the first instead of running beside it.
+        await using IAsyncDisposable? held = _locks is null
+            ? null
+            : await _locks.AcquireAsync(Target, _stopping);
 
         SegmentAnalysisOutcome outcome;
         try
         {
-            outcome = target == SegmentAnalysisTarget.Season
-                ? await _analysis.AnalyseSeasonAsync(id, _stopping)
-                : await _analysis.AnalyseMovieAsync(id, _stopping);
+            outcome =
+                target == SegmentAnalysisTarget.Season
+                    ? await _analysis.AnalyseSeasonAsync(id, _stopping)
+                    : await _analysis.AnalyseMovieAsync(id, _stopping);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

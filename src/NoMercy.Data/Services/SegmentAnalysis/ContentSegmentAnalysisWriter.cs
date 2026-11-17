@@ -25,18 +25,27 @@ namespace NoMercy.Data.Services.SegmentAnalysis;
 /// newest automatic result wins), and loses to manual rows, chapter titles
 /// and imports.
 /// </summary>
-public sealed class ContentSegmentAnalysisWriter(IContentSegmentRepository repository)
-    : ISegmentAnalysisWriter
+public sealed class ContentSegmentAnalysisWriter(
+    IContentSegmentRepository repository,
+    ISegmentAnalysisLocks locks
+) : ISegmentAnalysisWriter
 {
+    /// <summary>One key for every analysis write: they are short, and a plan made from a snapshot another write is changing would add a second row.</summary>
+    private const string WriteLock = "segment-analysis-write";
+
     public async Task WriteAsync(IReadOnlyList<AnalysedItem> items, CancellationToken ct)
     {
+        await using IAsyncDisposable held = await locks.AcquireAsync(WriteLock, ct);
+
         List<int> episodeIds =
         [
             .. items.Where(i => i.EpisodeId is not null).Select(i => i.EpisodeId!.Value),
         ];
         List<ContentSegment> existing =
             episodeIds.Count > 0 ? await repository.GetForEpisodesAsync(episodeIds) : [];
-        foreach (int movieId in items.Where(i => i.MovieId is not null).Select(i => i.MovieId!.Value))
+        foreach (
+            int movieId in items.Where(i => i.MovieId is not null).Select(i => i.MovieId!.Value)
+        )
         {
             ct.ThrowIfCancellationRequested();
             existing.AddRange(await repository.GetForMovieAsync(movieId));
@@ -47,7 +56,11 @@ public sealed class ContentSegmentAnalysisWriter(IContentSegmentRepository repos
         {
             ct.ThrowIfCancellationRequested();
             ContentSegmentWritePlan plan = ContentSegmentPrecedence.Plan(
-                [.. existing.Where(s => s.EpisodeId == item.EpisodeId && s.MovieId == item.MovieId)],
+                [
+                    .. existing.Where(s =>
+                        s.EpisodeId == item.EpisodeId && s.MovieId == item.MovieId
+                    ),
+                ],
                 AnalysisSegmentRows.For(item.EpisodeId, item.MovieId, item.Answer),
                 ContentSegmentSource.Analysis
             );

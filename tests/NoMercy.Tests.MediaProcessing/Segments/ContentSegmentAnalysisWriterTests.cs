@@ -53,30 +53,53 @@ public class ContentSegmentAnalysisWriterTests
     [Fact]
     public async Task AnalysisOutranksChaptersByLength()
     {
-        ContentSegment length = Existing(ContentSegmentSource.Chapters, ContentSegmentType.Intro, ContentSegmentPrecedence.ChapterLengthConfidence);
+        ContentSegment length = Existing(
+            ContentSegmentSource.Chapters,
+            ContentSegmentType.Intro,
+            ContentSegmentPrecedence.ChapterLengthConfidence
+        );
 
         await Writer().WriteAsync([Item(1)], CancellationToken.None);
 
         _removed.Should().Contain(length);
-        _written.Should().Contain(r => r.EpisodeId == 1 && r.SegmentType == ContentSegmentType.Intro && r.Source == "analysis");
+        _written
+            .Should()
+            .Contain(r =>
+                r.EpisodeId == 1
+                && r.SegmentType == ContentSegmentType.Intro
+                && r.Source == "analysis"
+            );
     }
 
     [Fact]
     public async Task AnalysisLosesToChaptersByTitle()
     {
-        ContentSegment title = Existing(ContentSegmentSource.Chapters, ContentSegmentType.Outro, ContentSegmentPrecedence.ChapterTitleConfidence);
+        ContentSegment title = Existing(
+            ContentSegmentSource.Chapters,
+            ContentSegmentType.Outro,
+            ContentSegmentPrecedence.ChapterTitleConfidence
+        );
 
         await Writer().WriteAsync([Item(1)], CancellationToken.None);
 
         _removed.Should().NotContain(title);
-        _written.Should().NotContain(r => r.SegmentType == ContentSegmentType.Credits, "credits and outro are one kind");
+        _written
+            .Should()
+            .NotContain(
+                r => r.SegmentType == ContentSegmentType.Credits,
+                "credits and outro are one kind"
+            );
         _written.Should().Contain(r => r.SegmentType == ContentSegmentType.Intro);
     }
 
     [Fact]
     public async Task AnalysisLosesToImport()
     {
-        ContentSegment import = Existing(ContentSegmentSource.Import, ContentSegmentType.Intro, 1.0);
+        ContentSegment import = Existing(
+            ContentSegmentSource.Import,
+            ContentSegmentType.Intro,
+            1.0
+        );
 
         await Writer().WriteAsync([Item(1)], CancellationToken.None);
 
@@ -87,7 +110,11 @@ public class ContentSegmentAnalysisWriterTests
     [Fact]
     public async Task AnalysisLosesToManual()
     {
-        ContentSegment manual = Existing(ContentSegmentSource.Manual, ContentSegmentType.Intro, 1.0);
+        ContentSegment manual = Existing(
+            ContentSegmentSource.Manual,
+            ContentSegmentType.Intro,
+            1.0
+        );
 
         await Writer().WriteAsync([Item(1)], CancellationToken.None);
 
@@ -99,7 +126,11 @@ public class ContentSegmentAnalysisWriterTests
     [Fact]
     public async Task AnalysisReplacesTheOlderDetectorRow()
     {
-        ContentSegment detector = Existing(ContentSegmentSource.Detector, ContentSegmentType.Outro, 0.8);
+        ContentSegment detector = Existing(
+            ContentSegmentSource.Detector,
+            ContentSegmentType.Outro,
+            0.8
+        );
 
         await Writer().WriteAsync([Item(1)], CancellationToken.None);
 
@@ -125,12 +156,20 @@ public class ContentSegmentAnalysisWriterTests
     [Fact]
     public async Task Movie_IsWrittenThroughTheSameApplyStep()
     {
-        await Writer().WriteAsync([new AnalysedItem(null, 129, SegmentAnswers.Episode())], CancellationToken.None);
+        await Writer()
+            .WriteAsync(
+                [new AnalysedItem(null, 129, SegmentAnswers.Episode())],
+                CancellationToken.None
+            );
 
-        _written.Should().HaveCount(2).And.OnlyContain(r => r.MovieId == 129 && r.Source == "analysis");
+        _written
+            .Should()
+            .HaveCount(2)
+            .And.OnlyContain(r => r.MovieId == 129 && r.Source == "analysis");
     }
 
-    private ContentSegmentAnalysisWriter Writer() => new(_repository.Object);
+    private ContentSegmentAnalysisWriter Writer() =>
+        new(_repository.Object, new SegmentAnalysisLocks());
 
     private ContentSegment Existing(string source, ContentSegmentType type, double confidence)
     {
@@ -147,5 +186,6 @@ public class ContentSegmentAnalysisWriterTests
         return row;
     }
 
-    private static AnalysedItem Item(int episodeId) => new(episodeId, null, SegmentAnswers.Episode(episodeId.ToString()));
+    private static AnalysedItem Item(int episodeId) =>
+        new(episodeId, null, SegmentAnswers.Episode(episodeId.ToString()));
 }
