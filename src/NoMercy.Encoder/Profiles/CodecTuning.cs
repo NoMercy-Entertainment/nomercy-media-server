@@ -80,7 +80,7 @@ public static class CodecTunings
                 10,
                 new() { ["x265.rdoq-level"] = "2", ["x265.aq-mode"] = "3" }
             ),
-            EncodingQuality.Ultra => new(18, "slower", CodecProfile.Main10, 10),
+            EncodingQuality.Ultra => new(18, "slow", CodecProfile.Main10, 10),
             EncodingQuality.VeryHigh => new(20, "slow", CodecProfile.Main10, 10),
             EncodingQuality.High => new(22, "slow", CodecProfile.Main10, 10),
             EncodingQuality.Balanced => new(24, "medium", CodecProfile.Main10, 10),
