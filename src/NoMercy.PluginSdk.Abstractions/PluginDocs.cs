@@ -66,6 +66,7 @@ public static class PluginDocs
     public const string ManifestDependencies = Manifest + "#dependencies";
     public const string ManifestTranslations = Manifest + "#translations";
     public const string LanRoutes = Repository + "/lan-routes.md";
+    public const string ShelvesAndPaging = Repository + "/shelves-and-paging.md";
 
     /// <summary>
     /// The page for a capability, from the path the contract generator gave it

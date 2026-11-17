@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -93,6 +94,23 @@ public class PluginViewRequest
     /// </summary>
     [JsonPropertyName("origin")]
     public string? Origin { get; init; }
+
+    /// <summary>
+    /// Which page of a shelf the caller wants: the cursor, the limit and, for
+    /// an append, the shelf. Read from <see cref="Query" />, so a request that
+    /// says nothing about paging asks for the first page.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreDataMember]
+    public PluginPageRequest Page => PluginPageRequest.From(Query);
+
+    /// <summary>
+    /// What the asking client says it can run, read from <see cref="Query" />.
+    /// Empty for an older client.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreDataMember]
+    public PluginClientFeatures Features => PluginClientFeatures.From(Query);
 
     /// <summary>
     /// One value, or null when the caller sent nothing for that field. Typed

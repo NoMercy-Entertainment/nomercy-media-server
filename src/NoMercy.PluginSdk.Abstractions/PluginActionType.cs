@@ -46,6 +46,19 @@ public static class PluginActionType
     /// <summary>A folder the host resolved, named by the host's own id.</summary>
     public const string PickFolder = "pickFolder";
 
+    /// <summary>
+    /// The next page of a shelf, asked for without leaving the screen.
+    /// <para>
+    /// In <see cref="PluginPaging.Append" /> mode the client asks the same view
+    /// for the page after the cursor and adds its items to the shelf named
+    /// <c>target</c>. In <see cref="PluginPaging.Replace" /> mode it asks for the
+    /// whole view at that cursor and draws it instead, which is what a page
+    /// number does. A client that does not know this type does nothing when it
+    /// runs, so an older app shows the page it has and stays usable.
+    /// </para>
+    /// </summary>
+    public const string LoadPage = "loadPage";
+
     public static IReadOnlySet<string> All { get; } =
         new HashSet<string>(StringComparer.Ordinal)
         {
@@ -58,5 +71,6 @@ public static class PluginActionType
             SubmitForm,
             PickFile,
             PickFolder,
+            LoadPage,
         };
 }

@@ -13,6 +13,9 @@
   against an SDK older than 12 to SDK 12.
 - [`plugins/music-analysis.md`](plugins/music-analysis.md) — how a plugin
   computes and stores the DJ analysis of a track.
+- [`plugins/shelves-and-paging.md`](plugins/shelves-and-paging.md) — the
+  app's grid, card, row and page for a plugin, and the paging contract the
+  clients build against.
 - [`plugins/versioning.md`](plugins/versioning.md) — the plugin ABI, what a
   major and a minor mean, and which `targetAbi` to set.
 

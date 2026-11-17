@@ -56,6 +56,12 @@ public static class PluginAbi
     // 12.11 also added NmPluginForbiddenComponents (NoMercy.Design), the refusal code
     // PluginRefusalCodes.ViewComponentForbidden and PluginRefusalMessages.ViewComponentForbidden:
     // the server refuses a view that names NMServerComponent at any depth. New members only.
+    // 12.11 also added the shelf builders and the paging contract: PluginShelves, PluginShelf,
+    // PluginShelfCard, PluginPaging, PluginPageRequest, PluginClientFeatures,
+    // PluginActionType.LoadPage, PluginActionIntent.LoadPage, PluginViewRequest.Page and
+    // PluginViewRequest.Features (read from Query, never sent over the wire) and
+    // PluginDocs.ShelvesAndPaging. Additive: new types, a new constant and new read-only
+    // members; PluginViews and every node shape are unchanged.
     public static Version Current { get; } = new(12, 11);
 
     /// <summary>

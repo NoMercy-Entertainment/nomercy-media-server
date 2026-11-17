@@ -110,6 +110,8 @@ public class PluginAbiTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PluginViewRequest), "UserId", typeof(string))]
+    [InlineData(typeof(PluginViewRequest), "Route", typeof(string))]
+    [InlineData(typeof(PluginViewRequest), "Query", typeof(Dictionary<string, string>))]
     [InlineData(typeof(PluginLibrary), "Id", typeof(string))]
     [InlineData(typeof(PluginLibrary), "Title", typeof(string))]
     [InlineData(typeof(PluginLibrary), "Type", typeof(string))]
@@ -184,6 +186,28 @@ public class PluginAbiTests
 
     private static PluginLibrary Shows(params PluginEncodingPreset[] presets) =>
         new("shows", "Shows", "tv") { EncodingPresets = [.. presets] };
+
+    /// <summary>
+    /// 12.11 added the paging contract and the shelf builders. Every action
+    /// word and builder a 12.10 plugin was compiled against still means what
+    /// it meant, and the new word is one more, not a renamed one.
+    /// </summary>
+    [Fact]
+    public void The_12_11_paging_additions_leave_every_older_action_word_alone()
+    {
+        PluginActionType.PlayMedia.Should().Be("playMedia");
+        PluginActionType.Navigate.Should().Be("navigate");
+        PluginActionType.RefreshView.Should().Be("refreshView");
+        PluginActionType.SubmitForm.Should().Be("submitForm");
+        PluginActionType.PickFolder.Should().Be("pickFolder");
+        PluginActionType.LoadPage.Should().Be("loadPage");
+        PluginActionType.All.Should().HaveCount(10);
+
+        typeof(PluginViews)
+            .GetMethod(nameof(PluginViews.Grid), [typeof(string), typeof(PluginComponent[])])
+            .Should()
+            .NotBeNull("PluginViews.Grid keeps its 12.0 shape; the app grid is PluginShelves.Grid");
+    }
 
     [Fact]
     public void ScheduledJob_BuiltTheWayElevenZeroBuiltIt_CarriesItsValues()
