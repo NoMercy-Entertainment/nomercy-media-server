@@ -64,3 +64,25 @@ Many episodes have story after the credits: an epilogue, a preview of the
 next episode, a scene after the copyright card. This is content. The analysis
 never puts it in a segment. A client must never skip it. Auto-advance at
 `content_end`, not at the end of the credits.
+
+## Running the analysis by hand
+
+`POST /api/v1/dashboard/content-analysis/intro/{seasonId}` (and
+`POST /api/v1/encoder/content-analysis/intro/{seasonId}`) used to run a quick
+test detection and store nothing. Now they queue the real analysis for the
+season, and its result is stored like any other analysis result. Manual rows
+and chapter titles still win over it.
+
+The answer comes back at once, before the analysis has run:
+
+```json
+{ "season_id": 10, "episodes_scanned": 13, "intro": { "start_seconds": 5.56, "end_seconds": 82.72, "confidence": 0.9 },
+  "outro": { "start_seconds": 1281.64, "end_seconds": 1361.08, "confidence": 0.9 }, "status": "queued" }
+```
+
+- `status` is `queued`: the analysis runs later, after encodes, and never
+  while something is playing. It takes minutes per episode.
+- `intro` and `outro` are what is stored now, before this run. They are null
+  when nothing is stored yet; that does not mean nothing will be found.
+- `episodes_scanned` is the number of encoded episodes in the season.
+- Read the new result from `/content-segments` when the run is done.

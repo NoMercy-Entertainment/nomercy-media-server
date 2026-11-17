@@ -190,8 +190,14 @@ public class ContentAnalysisController(
     /// Queues the intro / credits / end-of-content analysis (#598) for a season
     /// (owner-only: it is minutes of FFmpeg work per episode) and answers at once
     /// with the season's intro and outro stored now, plus <c>status = "queued"</c>.
-    /// The fields the dashboard reads are unchanged; the new answer replaces the
-    /// stored segments when the job has run.
+    /// This used to be a dry run; the queued analysis stores its answer, under
+    /// the precedence order (manual rows and chapter titles keep their place).
+    /// <para>
+    /// The dashboard (Advanced, Content analysis) reads only intro, outro and
+    /// episodes_scanned and treats a null intro or outro as "Not detected", so the
+    /// stored rows are returned rather than nulls for "not run yet". It does not
+    /// read <c>status</c>; see docs/segments.md.
+    /// </para>
     /// </summary>
     [HttpPost("intro/{seasonId:int}")]
     public async Task<IActionResult> DetectIntroForSeason(int seasonId, CancellationToken ct)
