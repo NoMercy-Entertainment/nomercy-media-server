@@ -552,7 +552,6 @@ public static class ServiceCollectionExtensions
         // NoMercy.MediaProcessing.EventHandlers.AutoEncodeSubscriber, gated
         // per-library. Each subscriber here has its own opt-out flag on
         // EncoderOptions for hard disable.
-        services.AddSingleton<IntroDetectSubscriber>();
         services.AddSingleton<CropDetectSubscriber>();
         services.AddHostedService<V3SubscriberActivator>();
 

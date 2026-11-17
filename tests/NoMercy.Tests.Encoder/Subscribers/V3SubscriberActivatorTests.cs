@@ -52,10 +52,6 @@ public class V3SubscriberActivatorTests
     {
         ServiceProvider provider = BuildProvider();
 
-        IntroDetectSubscriber intro1 = provider.GetRequiredService<IntroDetectSubscriber>();
-        IntroDetectSubscriber intro2 = provider.GetRequiredService<IntroDetectSubscriber>();
-        intro1.Should().BeSameAs(intro2);
-
         CropDetectSubscriber crop1 = provider.GetRequiredService<CropDetectSubscriber>();
         CropDetectSubscriber crop2 = provider.GetRequiredService<CropDetectSubscriber>();
         crop1.Should().BeSameAs(crop2);
@@ -81,7 +77,6 @@ public class V3SubscriberActivatorTests
 
         // Subscribers should be alive — resolving them after start returns the
         // same instance the activator pulled.
-        provider.GetRequiredService<IntroDetectSubscriber>().Should().NotBeNull();
         provider.GetRequiredService<CropDetectSubscriber>().Should().NotBeNull();
     }
 
@@ -101,7 +96,8 @@ public class V3SubscriberActivatorTests
             ?? throw new InvalidOperationException("activator type missing");
         IHostedService activator = (IHostedService)
             Activator.CreateInstance(
-                activatorType, [emptyProvider, NullLogger<V3SubscriberActivator>.Instance]
+                activatorType,
+                [emptyProvider, NullLogger<V3SubscriberActivator>.Instance]
             )!;
 
         Func<Task> act = () => activator.StartAsync(CancellationToken.None);

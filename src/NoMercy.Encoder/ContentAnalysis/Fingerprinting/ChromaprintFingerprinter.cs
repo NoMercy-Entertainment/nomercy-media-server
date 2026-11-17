@@ -34,10 +34,10 @@ namespace NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 /// <see cref="AudioFingerprint.ChromaprintFrameDuration"/> rather than a value
 /// read back from ffmpeg.
 ///
-/// This is the fire-and-forget path both <c>IntroDetectSubscriber</c> and
-/// <c>IntroDetectionSubscriber</c> funnel through, and the worst NAS-read
-/// offender among background jobs — each call reads up to a few minutes of
-/// audio per episode. It yields to active playback via
+/// The on-demand season detector of <c>ContentAnalysisService</c> (the
+/// encoder content-analysis endpoint) uses this; the background path is the
+/// #598 segment analysis (<c>SeasonSegmentPipeline</c>). Each call reads up to
+/// a few minutes of audio per episode. It yields to active playback via
 /// <see cref="MediaActivityMonitor.WaitForIdleAsync"/> before touching the
 /// source file, so it never competes with a streaming segment serve for the
 /// same NFS mount.
