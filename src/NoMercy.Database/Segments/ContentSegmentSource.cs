@@ -27,12 +27,18 @@ public static class ContentSegmentSource
     /// <summary>Community-provided data.</summary>
     public const string Import = "import";
 
-    /// <summary>The chromaprint season detector that runs after an encode.</summary>
+    /// <summary>
+    /// The retired chromaprint season detector. Nothing writes it any more; rows
+    /// it stored stay readable and rank with the analysis.
+    /// </summary>
     public const string Detector = "detector";
 
-    /// <summary>The chromaprint detector started from the encoder analysis endpoint.</summary>
+    /// <summary>
+    /// The retired chromaprint detector of the encoder analysis endpoint. Nothing
+    /// writes it any more; rows it stored stay readable and rank with the analysis.
+    /// </summary>
     public const string Auto = "auto";
 
-    /// <summary>The audio and picture analysis that replaces the chromaprint detector (#598).</summary>
+    /// <summary>The audio and picture analysis (#598), the one automatic detector.</summary>
     public const string Analysis = "analysis";
 }

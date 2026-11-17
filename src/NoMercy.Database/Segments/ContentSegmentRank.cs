@@ -32,7 +32,7 @@ public enum ContentSegmentRank
     /// <summary>A chapter chosen only by its length ("Chapter 02" of 90 s).</summary>
     ChapterLength = 1,
 
-    /// <summary>Audio fingerprinting: "detector", "auto" and, later, "analysis".</summary>
+    /// <summary>Automatic detection: "analysis", and the retired detector's "detector" and "auto" rows.</summary>
     Detection = 2,
 
     /// <summary>Community-provided data, and any source this server does not know.</summary>

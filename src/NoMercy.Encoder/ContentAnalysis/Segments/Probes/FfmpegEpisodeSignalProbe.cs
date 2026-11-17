@@ -26,8 +26,7 @@ namespace NoMercy.Encoder.ContentAnalysis.Segments.Probes;
 /// <see cref="IEpisodeSignalProbe"/> on the server's own FFmpeg build. Binary
 /// outputs (the raw fingerprint, thumbnails) and the OCR dump go to a private
 /// temp folder through the local <see cref="IStorage"/>; filter reports are read
-/// from stderr line by line. Each pass waits for playback to go idle first, like
-/// the chromaprint fingerprinter it replaces.
+/// from stderr line by line. Each pass waits for playback to go idle first.
 /// </summary>
 public sealed class FfmpegEpisodeSignalProbe(
     EncoderOptions options,
@@ -117,7 +116,10 @@ public sealed class FfmpegEpisodeSignalProbe(
             double? duration = FfmpegSignalParser.InputDuration(stderr);
             if (duration is null or <= 0 || !storage.Exists(fingerprintPath))
             {
-                logger.LogWarning("Segment analysis: no duration or fingerprint for {Path}", source.AudioPath);
+                logger.LogWarning(
+                    "Segment analysis: no duration or fingerprint for {Path}",
+                    source.AudioPath
+                );
                 return (null, false);
             }
 
@@ -149,7 +151,13 @@ public sealed class FfmpegEpisodeSignalProbe(
         foreach (TimeRange window in windows)
         {
             // Both detectors on the same decoded frames, told apart by instance name.
-            List<string>? both = await BlackPassAsync(input.Path, window, $"{StrictBlack},{LooseBlack}", source, ct);
+            List<string>? both = await BlackPassAsync(
+                input.Path,
+                window,
+                $"{StrictBlack},{LooseBlack}",
+                source,
+                ct
+            );
             if (both is null)
                 return null;
             if (!FfmpegSignalParser.HasUnnamedBlack(both))
@@ -160,8 +168,20 @@ public sealed class FfmpegEpisodeSignalProbe(
             }
 
             // An older build logs both as plain "blackdetect": one pass each.
-            List<string>? strictOnly = await BlackPassAsync(input.Path, window, StrictBlack, source, ct);
-            List<string>? looseOnly = await BlackPassAsync(input.Path, window, LooseBlack, source, ct);
+            List<string>? strictOnly = await BlackPassAsync(
+                input.Path,
+                window,
+                StrictBlack,
+                source,
+                ct
+            );
+            List<string>? looseOnly = await BlackPassAsync(
+                input.Path,
+                window,
+                LooseBlack,
+                source,
+                ct
+            );
             if (strictOnly is null || looseOnly is null)
                 return null;
             strict.AddRange(FfmpegSignalParser.Black(strictOnly, window.Start));
@@ -187,7 +207,11 @@ public sealed class FfmpegEpisodeSignalProbe(
         {
             // OCR is optional: without it textured-background credits are missed,
             // nothing is skipped early.
-            logger.LogInformation(ex, "Segment analysis: no OCR model ({Language}), OCR skipped", OcrLanguage);
+            logger.LogInformation(
+                ex,
+                "Segment analysis: no OCR model ({Language}), OCR skipped",
+                OcrLanguage
+            );
             return null;
         }
 
@@ -223,7 +247,9 @@ public sealed class FfmpegEpisodeSignalProbe(
                 "-",
             ];
 
-            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(
+                ct
+            );
             timeout.CancelAfter(LongPassTimeout);
             ProcessResult result;
             try
@@ -320,7 +346,10 @@ public sealed class FfmpegEpisodeSignalProbe(
                 "-y",
                 framesPath,
             ];
-            if (!await RunAsync(args, stderr, ShortPassTimeout, source.VideoPath, ct) || !storage.Exists(framesPath))
+            if (
+                !await RunAsync(args, stderr, ShortPassTimeout, source.VideoPath, ct)
+                || !storage.Exists(framesPath)
+            )
                 return null;
 
             byte[] pixels = await storage.ReadAsync(framesPath, ct);
@@ -378,7 +407,8 @@ public sealed class FfmpegEpisodeSignalProbe(
             "-sn",
         ];
 
-    private static string Seconds(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+    private static string Seconds(double value) =>
+        value.ToString("0.###", CultureInfo.InvariantCulture);
 
     /// <summary>Runs ffmpeg once, after playback goes idle; false (logged) when it failed.</summary>
     private async Task<bool> RunAsync(

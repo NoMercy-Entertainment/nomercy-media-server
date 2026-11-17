@@ -19,8 +19,8 @@ namespace NoMercy.Data.Repositories;
 /// <summary>
 /// Read/write access for timeline annotations — intro/outro/recap/credits
 /// segments the player uses to render "Skip Intro" / auto-advance buttons.
-/// Writes come from the detector (chromaprint pipeline) or manual edits
-/// from the dashboard; reads come from the player on every playback start.
+/// Writes come from the segment analysis, the chapter classifier, or manual
+/// edits from the dashboard; reads come from the player on every playback start.
 /// Automatic writers store through <see cref="ApplyAsync"/> with a plan from
 /// <see cref="ContentSegmentPrecedence"/>.
 /// </summary>

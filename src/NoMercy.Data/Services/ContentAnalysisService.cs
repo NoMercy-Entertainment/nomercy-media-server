@@ -13,12 +13,12 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
-using NoMercy.MediaProcessing.Jobs.SegmentJobs;
-using NoMercy.MediaProcessing.Segments;
-using NoMercyQueue.Core.Interfaces;
 using NoMercy.Encoder.Progress;
 using NoMercy.Encoder.Subtitles;
+using NoMercy.MediaProcessing.Jobs.SegmentJobs;
+using NoMercy.MediaProcessing.Segments;
 using NoMercy.Storage;
+using NoMercyQueue.Core.Interfaces;
 using ContentSegment = NoMercy.Database.Models.Media.ContentSegment;
 using ContentSegmentType = NoMercy.Database.Models.Media.ContentSegmentType;
 using VideoFile = NoMercy.Database.Models.Media.VideoFile;
@@ -30,8 +30,8 @@ namespace NoMercy.Data.Services;
 /// <see cref="NoMercy.Api.Controllers.V1.Encoder.EncoderContentAnalysisController"/>
 /// and its deprecated dashboard alias. Both controllers own auth, HTTP input
 /// binding, and JSON response shaping; this service owns file resolution,
-/// invoking the ffmpeg/whisper/tesseract detectors, and (for the encoder
-/// route) persisting detected segments.
+/// invoking the crop/whisper/tesseract tools, and queuing the segment
+/// analysis for a season.
 /// </summary>
 public class ContentAnalysisService(
     ICropDetector cropDetector,

@@ -13,7 +13,7 @@ namespace NoMercy.NmSystem.Monitoring;
 
 /// <summary>
 /// Tracks whether a user is actively streaming, so NAS-read-heavy background
-/// work (library scans, imports, extras, chromaprint fingerprinting) can back
+/// work (library scans, imports, extras, the segment analysis) can back
 /// off while playback is in progress. <see cref="Touch"/> is called once per
 /// served segment/playlist/subtitle request; <see cref="IsActive"/> reports
 /// whether a touch landed within <see cref="ActiveWindow"/>.
@@ -59,8 +59,8 @@ public class MediaActivityMonitor
     /// <summary>
     /// Polls until playback goes idle or <paramref name="maxWait"/> elapses,
     /// whichever comes first. Used by fire-and-forget background work (e.g.
-    /// chromaprint intro-detection reads) so it defers to active playback but
-    /// never starves indefinitely.
+    /// the segment analysis's FFmpeg passes) so it defers to active playback
+    /// but never starves indefinitely.
     /// </summary>
     public async Task WaitForIdleAsync(TimeSpan maxWait, CancellationToken ct)
     {
