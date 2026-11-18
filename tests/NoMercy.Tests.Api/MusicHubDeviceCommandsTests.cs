@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
@@ -591,9 +592,13 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
 
         DeviceBusRegistry busRegistry = new(
             new DeviceStateRepository(contextFactory),
-            Mock.Of<IHubContext<DeviceHub>>(),
+            new Mock<IHubContext<DeviceHub>> { DefaultValue = DefaultValue.Mock }.Object,
             Mock.Of<ICastMdnsRegistry>()
         );
+        // A native TV app holds the device bus open; a web receiver never does.
+        Mock<WebSocket> busSocket = new();
+        busSocket.SetupGet(s => s.State).Returns(WebSocketState.Open);
+        await busRegistry.Register(tv.Id, busSocket.Object);
         // Deliberately NOT calling UpdateStatus — the TV has never reported
         // foreground=true, matching a backgrounded-but-connected app.
 
