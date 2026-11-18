@@ -14,6 +14,7 @@ using Moq;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Infrastructure;
+using NoMercy.Resources;
 
 namespace NoMercy.Tests.Encoder.Hardware;
 
@@ -625,6 +626,144 @@ public class HardwareBenchmarkTests
     }
 
     [Fact]
+    public async Task CalibrateAsync_LowAvailableMemory_StartsNoSoftwareUhdProbe()
+    {
+        List<string> started = [];
+        Mock<IProcessRunner> runner = RecordingRunner(started);
+        Mock<IResourceMonitor> monitor = new();
+        monitor.Setup(m => m.GetAvailableMemoryMb()).Returns(2_048);
+
+        HardwareBenchmark sut = NewBenchmark(
+            processRunner: runner.Object,
+            resourceMonitor: monitor.Object
+        );
+
+        await sut.CalibrateAsync(CancellationToken.None);
+
+        started.Should().NotBeEmpty("the small tiers still fit in 2 GB");
+        started.Should().NotContain(a => a.Contains("size=3840x2160"));
+    }
+
+    [Fact]
+    public async Task CalibrateAsync_PlentyOfMemory_RunsEveryProbe()
+    {
+        List<string> started = [];
+        Mock<IProcessRunner> runner = RecordingRunner(started);
+        Mock<IResourceMonitor> monitor = new();
+        monitor.Setup(m => m.GetAvailableMemoryMb()).Returns(65_536);
+
+        HardwareBenchmark sut = NewBenchmark(
+            processRunner: runner.Object,
+            resourceMonitor: monitor.Object
+        );
+
+        await sut.CalibrateAsync(CancellationToken.None);
+
+        // 3 fast software encoders x 4 tiers + 3 other software encoders x 3 tiers.
+        started.Should().HaveCount(21);
+        started.Count(a => a.Contains("size=3840x2160")).Should().Be(3);
+    }
+
+    [Fact]
+    public async Task CalibrateAsync_NoMemoryReading_RunsEveryProbe()
+    {
+        List<string> started = [];
+        Mock<IProcessRunner> runner = RecordingRunner(started);
+
+        HardwareBenchmark sut = NewBenchmark(processRunner: runner.Object);
+
+        await sut.CalibrateAsync(CancellationToken.None);
+
+        started.Should().HaveCount(21);
+    }
+
+    [Fact]
+    public async Task CalibrateAsync_SkippedProbe_KeepsCachedReadingAndSavesIndex()
+    {
+        SpeedKey uhdKey = new(VideoCodecType.H264, "libx264", 3840, null);
+        SpeedIndex cached = new(new() { [uhdKey] = new(12, 0.4, DateTime.UtcNow.AddDays(-3)) });
+        Mock<ISpeedIndexStore> store = new();
+        store.Setup(s => s.Load()).Returns(cached);
+        Mock<IResourceMonitor> monitor = new();
+        monitor.Setup(m => m.GetAvailableMemoryMb()).Returns(2_048);
+
+        HardwareBenchmark sut = NewBenchmark(
+            processRunner: RecordingRunner([]).Object,
+            store: store.Object,
+            resourceMonitor: monitor.Object
+        );
+
+        SpeedIndex index = await sut.CalibrateAsync(CancellationToken.None);
+
+        index.Measurements[uhdKey].Fps.Should().Be(12);
+        store.Verify(s => s.Save(It.IsAny<SpeedIndex>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("libx264", 3840, 2160, 4_827)]
+    [InlineData("libx264", 1920, 1080, 1_287)]
+    [InlineData("libx265", 3840, 2160, 5_051)]
+    [InlineData("libx265", 1920, 1080, 1_645)]
+    [InlineData("libsvtav1", 3840, 2160, 9_141)]
+    [InlineData("libsvtav1", 1920, 1080, 2_548)]
+    [InlineData("libsvtav1", 854, 480, 831)]
+    [InlineData("libaom-av1", 1920, 1080, 993)]
+    [InlineData("librav1e", 1920, 1080, 1_286)]
+    [InlineData("libvpx-vp9", 1920, 1080, 582)]
+    public void EstimatePeakMb_CoversTheMeasuredPeak(string encoder, int w, int h, long measuredMb)
+    {
+        CalibrationMemoryGuard
+            .EstimatePeakMb(encoder, w, h)
+            .Should()
+            .BeGreaterThanOrEqualTo(measuredMb);
+    }
+
+    [Fact]
+    public void SkipReason_UnknownAvailableMemory_RunsTheProbe()
+    {
+        CalibrationMemoryGuard.SkipReason("libsvtav1", 3840, 2160, 0).Should().BeNull();
+    }
+
+    [Fact]
+    public void SkipReason_BelowUhdFloor_SkipsEvenTheCheapestEncoder()
+    {
+        CalibrationMemoryGuard.SkipReason("libx264", 3840, 2160, 4_096).Should().NotBeNull();
+    }
+
+    [Fact]
+    public void BuildCalibrationArguments_SoftwareProbe_CapsThreadsToTheEncodeQueueBudget()
+    {
+        string[] args = CalibrationArgumentBuilder.BuildCalibrationArguments(
+            SoftwareTarget(MakeSoftwareH264()),
+            3840,
+            2160
+        );
+
+        int threadsIdx = Array.IndexOf(args, "-threads");
+        threadsIdx.Should().BeGreaterThan(-1);
+        args[threadsIdx + 1].Should().Be(EncodeThreadBudget.SoftwareEncode.ToString());
+    }
+
+    [Fact]
+    public void BuildCalibrationArguments_HardwareProbe_LeavesThreadsAlone()
+    {
+        EncoderInfo nvenc = MakeSoftwareH264() with
+        {
+            FfmpegName = "h264_nvenc",
+            RequiredVendor = GpuVendor.Nvidia,
+            Presets = ["p4"],
+        };
+
+        string[] args = CalibrationArgumentBuilder.BuildCalibrationArguments(
+            HardwareTarget(nvenc, "RTX 4080", vendorIndex: 0),
+            1920,
+            1080
+        );
+
+        args.Should().NotContain("-threads");
+    }
+
+    [Fact]
     public async Task CalibrateAsync_SkipsFailedEncoderRuns()
     {
         Mock<IProcessRunner> runner = new();
@@ -784,7 +923,8 @@ public class HardwareBenchmarkTests
     private static HardwareBenchmark NewBenchmark(
         IHardwareCapabilities? hardware = null,
         IProcessRunner? processRunner = null,
-        ISpeedIndexStore? store = null
+        ISpeedIndexStore? store = null,
+        IResourceMonitor? resourceMonitor = null
     )
     {
         Mock<IHardwareCapabilities> hw = new();
@@ -801,8 +941,42 @@ public class HardwareBenchmarkTests
             runner,
             storeImpl,
             new() { FfmpegPathOverride = "ffmpeg", FfprobePathOverride = "ffprobe" },
-            NullLogger<HardwareBenchmark>.Instance
+            NullLogger<HardwareBenchmark>.Instance,
+            resourceMonitor: resourceMonitor
         );
+    }
+
+    private static Mock<IProcessRunner> RecordingRunner(List<string> started)
+    {
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>>(),
+                    It.IsAny<Action<string>>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Returns(
+                (
+                    string _,
+                    string[] args,
+                    Action<string>? onStdOut,
+                    Action<string>? _,
+                    string? _,
+                    CancellationToken _
+                ) =>
+                {
+                    started.Add(string.Join(' ', args));
+                    onStdOut?.Invoke("fps=60");
+                    onStdOut?.Invoke("progress=end");
+                    return Task.FromResult(new ProcessResult(0, "", "", TimeSpan.Zero));
+                }
+            );
+        return runner;
     }
 
     private static EncoderInfo MakeSoftwareH264() =>
