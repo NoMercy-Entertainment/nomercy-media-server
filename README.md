@@ -204,7 +204,7 @@ Forward port `7626` on your router to access your server from outside your home 
 | Flag | Short | Description |
 |:--|:--|:--|
 | `--loglevel` | `-l` | Log level (`Verbose`, `Debug`, `Information`, `Warning`, `Error`, `Fatal`) |
-| `--dev` | `-d` | Run the server in development mode |
+| `--dev` | `-d` | NoMercy maintainers only: connects to our development services. Leave it off to run your own server |
 | `--internal-port` | `-i` | Internal port (default: `7626`) |
 | `--external-port` | `-x` | External port (default: `7626`) |
 | `--internal-ip` | | Internal IP address override |
