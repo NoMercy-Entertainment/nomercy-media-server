@@ -186,6 +186,18 @@ public partial class MusicHub
         }
     }
 
+    internal static bool IsTargetLive(
+        bool liveOnMusicHub,
+        bool targetIsTv,
+        bool onDeviceBus,
+        bool foreground
+    )
+    {
+        // A web cast receiver is never on the device bus: nothing to foreground,
+        // and a Cast LAUNCH would reload it and drop the music.
+        return liveOnMusicHub && (!targetIsTv || !onDeviceBus || foreground);
+    }
+
     private async Task ChangeDeviceCoreAsync(string? deviceId, List<Device>? knownDevices)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
@@ -219,12 +231,17 @@ public partial class MusicHub
         // below were skipped, and nothing brought the screen up. GetStatus's
         // Foreground bit (the client's own /v1/ping) is the real signal —
         // require it too.
-        bool targetIsLive =
-            connectedDevices.Any(d =>
-                d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-                && OwnedClients(user.Id, deviceId)
-                    .Any(c => c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase))
-            ) && (targetTv is null || _busRegistry.GetStatus(targetTv.Id).Foreground);
+        bool liveOnMusicHub = connectedDevices.Any(d =>
+            d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+            && OwnedClients(user.Id, deviceId)
+                .Any(c => c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase))
+        );
+        bool targetIsLive = IsTargetLive(
+            liveOnMusicHub,
+            targetTv is not null,
+            targetTv is not null && _busRegistry.IsOnline(targetTv.Id),
+            targetTv is not null && _busRegistry.GetStatus(targetTv.Id).Foreground
+        );
 
         if (targetTv is not null)
         {
