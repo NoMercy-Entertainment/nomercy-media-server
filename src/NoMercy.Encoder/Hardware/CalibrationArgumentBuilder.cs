@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
+using NoMercy.Resources;
 
 namespace NoMercy.Encoder.Hardware;
 
@@ -76,6 +77,13 @@ internal static class CalibrationArgumentBuilder
                 : target.Encoder.Presets[target.Encoder.Presets.Length / 2];
             args.Add("-preset");
             args.Add(preset);
+        }
+
+        // Software probes use the thread count a software encode in the queue gets.
+        if (target.Device is null)
+        {
+            args.Add("-threads");
+            args.Add(EncodeThreadBudget.SoftwareEncode.ToString(CultureInfo.InvariantCulture));
         }
 
         // Hard cap on encoded frames — ffmpeg stops as soon as the output

@@ -281,7 +281,7 @@ public class EncodingOrchestrator(
                 bool isPerTaskRun =
                     request.Options?.TaskFilter is { } filter
                     && filter.Kind != EncodeTaskKind.Whole;
-                if (!isPerTaskRun)
+                if (!isPerTaskRun && !request.HostStopping.IsCancellationRequested)
                 {
                     try
                     {

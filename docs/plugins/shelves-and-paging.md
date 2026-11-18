@@ -298,6 +298,22 @@ public Task<PluginView> GetViewAsync(PluginViewRequest request, CancellationToke
   client can run `loadPage`. A plugin that used to send one long list can
   keep sending it to a client without paging.
 
+## Client features
+
+A client lists what it can do in one query value: `features=paging,rows`.
+Names are separated by commas and keep their case. A plugin reads them with
+`request.Features.Supports(...)`.
+
+| Word | Constant | Means |
+|---|---|---|
+| `paging` | `PluginClientFeatures.Paging` | The client runs `loadPage` and reads a shelf's `loadMore`. |
+| `rows` | `PluginClientFeatures.Rows` | The client draws a plugin's `NMCarousel` as its own home-page row, and draws `NMLolomo`. |
+
+The two are separate on purpose. A client can page before it draws the app's
+row. Send `NMCarousel` as the home row, and `NMLolomo`, only to a client that
+sends `rows`. To any other client, send the old shape, for example a heading
+above the design system's carousel. `rows` is in ABI 12.12 and later.
+
 ## What the server enforces
 
 On every view answer, before it is sent (`PluginShelfCaps`):
@@ -338,14 +354,17 @@ An older app is one without app-web #376.
 | `features` | An older app sends none, so `request.Features` is empty. |
 
 So nothing breaks, and nothing harmful runs. A plugin that must look right on
-an older app can check `request.Features` and send its old view.
+an older app can check `request.Features` and send its old view: `rows` for
+the home row and `NMLolomo`, `paging` for `loadPage`.
 
 ## What the client builds (app-web #376 and Compose)
 
 1. Draw `NMCarousel` from a plugin as the app's home-page row, with the
    props above.
 2. Add `NMLolomo` to the components a plugin may draw, with the shape above.
-3. Send `features=paging` on every view request, GET and POST.
+3. Send `features` on every view request, GET and POST: `paging` once the
+   client runs `loadPage`, and `rows` once it draws `NMCarousel` as the home
+   row and draws `NMLolomo` (steps 1 and 2). Together: `features=paging,rows`.
 4. Run `loadPage` in both modes, as above.
 5. Read `loadMore` on `NMGrid`, `NMCarousel` and `NMLolomo`. Whether that is
    a "Load more" button or loading on scroll is the client's choice.

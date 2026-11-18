@@ -64,7 +64,9 @@ public static class PluginAbi
     // members; PluginViews and every node shape are unchanged.
     // 12.11 also added PluginRefusalCodes.OutOfProcessUnsupported: a plugin set to run in its
     // own process that uses something that process does not carry is refused, not started.
-    public static Version Current { get; } = new(12, 11);
+    // 12.12 added PluginClientFeatures.Rows ("rows", a new constant): the client
+    // draws a plugin's NMCarousel as its own home-page row and draws NMLolomo.
+    public static Version Current { get; } = new(12, 12);
 
     /// <summary>
     /// The oldest major this server can load at all.

@@ -38,7 +38,8 @@ public class HardwareBenchmark(
     ISpeedIndexStore store,
     EncoderOptions options,
     ILogger<HardwareBenchmark> logger,
-    IAnalysisProgressObserver? progress = null
+    IAnalysisProgressObserver? progress = null,
+    IResourceMonitor? resourceMonitor = null
 ) : IHardwareBenchmark
 {
     // Standard benchmark tiers for every target.
@@ -133,6 +134,7 @@ public class HardwareBenchmark(
     public const int BenchmarkSchemaVersion = 2;
 
     private SpeedIndex _cache = new(new());
+
     // Calibrations are serialized: a second caller (dashboard "Run benchmark"
     // during the startup or monthly run) waits its turn instead of running a
     // second set of ffmpeg probes that would skew both measurements.
@@ -246,6 +248,9 @@ public class HardwareBenchmark(
 
             try
             {
+                if (ShouldSkipForMemory(target, tierWidth, tierHeight))
+                    continue;
+
                 SpeedMeasurement? measured = await MeasureAsync(target, tierWidth, tierHeight, ct);
 
                 if (measured is null)
@@ -399,6 +404,33 @@ public class HardwareBenchmark(
             idx++;
         }
         return result;
+    }
+
+    // A skipped probe records nothing, like a failed one: the cached reading stays.
+    private bool ShouldSkipForMemory(CalibrationTarget target, int width, int height)
+    {
+        if (target.Device is not null || resourceMonitor is null)
+            return false;
+
+        long availableMb = resourceMonitor.GetAvailableMemoryMb();
+        string? reason = CalibrationMemoryGuard.SkipReason(
+            target.Encoder.FfmpegName,
+            width,
+            height,
+            availableMb
+        );
+        if (reason is null)
+            return false;
+
+        logger.LogInformation(
+            "Skipping benchmark probe {Encoder} @ {W}x{H}: {Reason}, {Available} MB available",
+            target.Encoder.FfmpegName,
+            width,
+            height,
+            reason,
+            availableMb
+        );
+        return true;
     }
 
     private async Task<SpeedMeasurement?> MeasureAsync(

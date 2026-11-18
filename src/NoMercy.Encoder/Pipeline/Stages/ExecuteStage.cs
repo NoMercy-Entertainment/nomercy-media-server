@@ -14,6 +14,7 @@ using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Jobs;
+using NoMercy.Encoder.Pipeline.Resume;
 using NoMercy.Encoder.Progress;
 using NoMercy.Storage;
 
@@ -28,7 +29,8 @@ public record ExecuteInput(
 public class ExecuteStage(
     IFfmpegExecutor executor,
     ICheckpointStore checkpointStore,
-    ILogger<ExecuteStage> logger
+    ILogger<ExecuteStage> logger,
+    EncodeResumeMarker? resumeMarker = null
 ) : IPipelineStage<ExecuteInput, ExecutionResult[]>, IExecutionStage
 {
     public string Name => "Execute";
@@ -101,6 +103,8 @@ public class ExecuteStage(
                             );
 
                         await WriteCrashCheckpointAsync(context, lastProgressMs, result.StdErr, ct);
+                        if (!context.HostStopping.IsCancellationRequested)
+                            await DropResumeMarkerAsync(cmd, context.CorrelationId, ct);
 
                         return new StageFailure(error);
                     }
@@ -121,6 +125,23 @@ public class ExecuteStage(
         {
             CleanupDrmKeyArtifacts(input.Commands, context.CorrelationId);
         }
+    }
+
+    // A resumed run that fails may have cut into segments the marker vouched for.
+    private async Task DropResumeMarkerAsync(
+        FfmpegCommand command,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        if (resumeMarker is null || command.ResumeMarkerPath is null)
+            return;
+
+        await resumeMarker.ClearAsync(command.ResumeMarkerPath, ct);
+        logger.LogInformation(
+            "[{CorrelationId}] Resumed encode failed; the next attempt starts at 0",
+            correlationId
+        );
     }
 
     /// <summary>

@@ -11,6 +11,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NoMercy.NmSystem.Configuration;
@@ -101,7 +102,8 @@ public static class ServiceRegistration
                 resourceBudget,
                 resourceAwareQueues,
                 activityGate,
-                queueReadyStages
+                queueReadyStages,
+                sp.GetService<IHostApplicationLifetime>()?.ApplicationStopping ?? default
             );
         });
         services.AddSingleton<JobDispatcher>(sp => sp.GetRequiredService<QueueRunner>().Dispatcher);

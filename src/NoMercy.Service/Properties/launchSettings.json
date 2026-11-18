@@ -1,5 +1,10 @@
 {
   "profiles": {
+    "NoMercy": {
+      "commandName": "Project",
+      "commandLineArgs": "--loglevel=information",
+      "dotnetRunMessages": true
+    },
     "https": {
       "commandName": "Project",
       "commandLineArgs": "--dev --loglevel=verbose",

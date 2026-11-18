@@ -16,7 +16,9 @@ using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Execution;
+using NoMercy.Encoder.Jobs;
 using NoMercy.Encoder.Output;
+using NoMercy.Encoder.Pipeline.Resume;
 using NoMercy.Encoder.Pipeline.Stages;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Encoder.Progress;
@@ -31,7 +33,10 @@ public class Encoder(
     IExecutionStage executeStage,
     IFinalizeStage finalizeStage,
     ILogger<Encoder> logger,
-    IProfileOverride? profileOverride = null
+    IProfileOverride? profileOverride = null,
+    EncodeResumeStitcher? resumeStitcher = null,
+    EncodeResumeMarker? resumeMarker = null,
+    ICheckpointStore? checkpointStore = null
 ) : IEncoder
 {
     public async Task<EncodingResult> EncodeAsync(
@@ -55,6 +60,7 @@ public class Encoder(
             OriginalOutputDirectory = request.OriginalOutputDirectory,
             EnableMetadataInjection = request.Options?.EnableMetadataInjection ?? false,
             Resources = request.Options?.TaskFilter?.Resources,
+            HostStopping = request.HostStopping,
         };
         Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -207,6 +213,24 @@ public class Encoder(
                 return Fail(executeFailure.Error, stopwatch.Elapsed, progress);
 
             executionResults = ((StageSuccess<ExecutionResult[]>)executeResult).Value;
+
+            // A resumed run lists only its own segments; a half-stitched bundle must not publish.
+            if (resumeStitcher is not null)
+            {
+                string? stitchError = await resumeStitcher.StitchAsync(
+                    commands,
+                    request.OutputDirectory,
+                    context.CorrelationId,
+                    ct
+                );
+                if (stitchError is not null)
+                    return Fail(
+                        new(EncodingErrorKind.Unknown, stitchError, null, "Execute", true),
+                        stopwatch.Elapsed,
+                        progress
+                    );
+            }
+
             progress?.OnStageCompleted(executeStageName, stopwatch.Elapsed);
         }
 
@@ -279,6 +303,7 @@ public class Encoder(
                 return Fail(finalizeFailure.Error, stopwatch.Elapsed, progress);
 
             finalizeOutput = ((StageSuccess<FinalizeOutput>)finalizeResult).Value;
+            await ClearRetryLeftoversAsync(request.OutputDirectory, context.CorrelationId, ct);
             progress?.OnStageCompleted("Finalize", stopwatch.Elapsed);
         }
 
@@ -323,6 +348,31 @@ public class Encoder(
                 GpuUsed: gpuUsed
             )
         );
+    }
+
+    // The folder is published as it is, so a finished encode must not carry its retry files along.
+    private async Task ClearRetryLeftoversAsync(
+        string outputDirectory,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            if (resumeMarker is not null)
+                await resumeMarker.ClearAllAsync(outputDirectory, ct);
+            if (checkpointStore is not null)
+                await checkpointStore.DeleteAsync(outputDirectory, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "[{CorrelationId}] Could not remove the retry files from {Directory}",
+                correlationId,
+                outputDirectory
+            );
+        }
     }
 
     public async Task<PreviewResult> PreviewAsync(
