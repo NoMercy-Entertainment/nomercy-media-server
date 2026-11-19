@@ -43,7 +43,11 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
         await using MediaContext context = await contextFactory.CreateDbContextAsync();
         return await context
             .Devices.AsNoTracking()
-            .Where(device => device.OwnerUserId == ownerUserId && device.Type == "tv")
+            .Where(device =>
+                device.OwnerUserId == ownerUserId
+                && device.Type == "tv"
+                && device.Fingerprint != null
+            )
             .ToListAsync();
     }
 

@@ -119,6 +119,17 @@ public class DeviceStateRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetOwnedTvsAsync_LeavesOutRetiredRows()
+    {
+        Device tv = Seed("tv-1", "tv-1");
+        Seed("tv-old", null);
+
+        List<Device> tvs = await _repository.GetOwnedTvsAsync(OwnerId);
+
+        tvs.Should().ContainSingle().Which.Id.Should().Be(tv.Id);
+    }
+
+    [Fact]
     public async Task SetVolumeAsync_StoresTheVolumeOnTheDevice()
     {
         Device device = Seed("tv-1", "tv-1");
