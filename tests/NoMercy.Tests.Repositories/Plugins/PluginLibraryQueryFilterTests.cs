@@ -67,6 +67,8 @@ public sealed class PluginLibraryQueryFilterTests : IDisposable
                 LibraryId = _otherShows,
             }
         );
+        // Show 1 was added by hand; show 2 has no link row at all.
+        context.LibraryTv.Add(new(_shows, 1, LibraryLinkOrigin.Manual));
         context.Movies.AddRange(
             new Movie
             {
@@ -120,6 +122,42 @@ public sealed class PluginLibraryQueryFilterTests : IDisposable
     {
         (await Query().GetShowsAsync(libraryId)).Should().HaveCount(2);
         (await Query().GetMoviesAsync(libraryId)).Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// A plugin can tell a show the owner added from one a scan attached, and a
+    /// show the server says nothing about is not read as added by hand.
+    /// </summary>
+    [Fact]
+    public async Task A_show_says_why_it_is_in_its_library()
+    {
+        IReadOnlyList<PluginLibraryShow> shows = await Query().GetShowsAsync();
+
+        shows.Single(show => show.Id == 1).AddedBy.Should().Be(PluginLibraryAddedBy.Manual);
+        shows.Single(show => show.Id == 2).AddedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_show_a_file_brought_in_says_file()
+    {
+        using (MediaContext context = new(_options))
+        {
+            context.LibraryTv.Add(new(_otherShows, 2, LibraryLinkOrigin.File));
+            await context.SaveChangesAsync();
+        }
+
+        IReadOnlyList<PluginLibraryShow> shows = await Query()
+            .GetShowsAsync(_otherShows.ToString());
+
+        shows.Should().ContainSingle().Which.AddedBy.Should().Be(PluginLibraryAddedBy.File);
+    }
+
+    /// <summary>The SDK's names are the values the server stores.</summary>
+    [Fact]
+    public void The_sdk_values_match_what_the_server_stores()
+    {
+        PluginLibraryAddedBy.Manual.Should().Be(LibraryLinkOrigin.Manual);
+        PluginLibraryAddedBy.File.Should().Be(LibraryLinkOrigin.File);
     }
 
     private PluginLibraryQuery Query()

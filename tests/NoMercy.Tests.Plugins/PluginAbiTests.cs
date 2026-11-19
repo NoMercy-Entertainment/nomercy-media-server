@@ -92,6 +92,19 @@ public class PluginAbiTests
     [Theory]
     [InlineData(typeof(PluginScheduledJob), new[] { typeof(string), typeof(string), typeof(bool) })]
     [InlineData(typeof(PluginLibrary), new[] { typeof(string), typeof(string), typeof(string) })]
+    [InlineData(
+        typeof(PluginLibraryShow),
+        new[]
+        {
+            typeof(int),
+            typeof(string),
+            typeof(int?),
+            typeof(string),
+            typeof(string),
+            typeof(int),
+            typeof(int),
+        }
+    )]
     public void ConstructorsElevenZeroPluginsCall_AreStillThere(Type type, Type[] parameters)
     {
         ConstructorInfo? found = type.GetConstructor(parameters);

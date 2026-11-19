@@ -66,7 +66,10 @@ public static class PluginAbi
     // own process that uses something that process does not carry is refused, not started.
     // 12.12 added PluginClientFeatures.Rows ("rows", a new constant): the client
     // draws a plugin's NMCarousel as its own home-page row and draws NMLolomo.
-    public static Version Current { get; } = new(12, 12);
+    // 12.13 added PluginLibraryShow.AddedBy (an init-only property, so the constructor a
+    // plugin was compiled against is still there) and PluginLibraryAddedBy (two constants):
+    // why a show is in its library, manual or file, null when the server does not say.
+    public static Version Current { get; } = new(12, 13);
 
     /// <summary>
     /// The oldest major this server can load at all.

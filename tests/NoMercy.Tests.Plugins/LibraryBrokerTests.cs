@@ -85,6 +85,26 @@ public class LibraryBrokerTests
     }
 
     /// <summary>
+    /// Why a show is in its library crosses with it (ABI 12.13). A member the
+    /// broker dropped would read in the plugin as "the server does not say".
+    /// </summary>
+    [Fact]
+    public async Task WhyAShowIsInItsLibraryCrossesBackWithIt()
+    {
+        PluginCallResponse response = await Ask(
+            new FakeCapabilities(null),
+            new RecordingLibrary(),
+            nameof(IPluginLibraryQuery.GetShowsAsync)
+        );
+
+        List<PluginLibraryShow>? shows = System.Text.Json.JsonSerializer.Deserialize<
+            List<PluginLibraryShow>
+        >(response.PayloadJson!, PluginWireJson.Options);
+
+        shows!.Should().ContainSingle().Which.AddedBy.Should().Be(PluginLibraryAddedBy.Manual);
+    }
+
+    /// <summary>
     /// A plugin asking for one library's shows must not be handed every
     /// library's. The filter is the argument, and dropping it is a plugin
     /// reading rows it did not ask for.
@@ -201,7 +221,12 @@ internal sealed class RecordingLibrary : IPluginLibraryQuery
         Queries++;
         LastLibraryId = libraryId;
 
-        return Task.FromResult<IReadOnlyList<PluginLibraryShow>>([]);
+        return Task.FromResult<IReadOnlyList<PluginLibraryShow>>([
+            new PluginLibraryShow(7, "The Ark", 2023, "tv", null, 36, 0)
+            {
+                AddedBy = PluginLibraryAddedBy.Manual,
+            },
+        ]);
     }
 
     public Task<IReadOnlyList<PluginLibraryMovie>> GetMoviesAsync(
