@@ -156,7 +156,18 @@ public record PluginLibraryShow(
     string? Folder,
     int EpisodeCount,
     int HaveEpisodeCount
-);
+)
+{
+    /// <summary>
+    /// Why this show is in its library: <see cref="PluginLibraryAddedBy.Manual" />
+    /// when the owner added it, <see cref="PluginLibraryAddedBy.File" /> when a
+    /// file on disk brought it in. Null when the server does not say: a server
+    /// older than ABI 12.13, or a show with no link to its library. Null never
+    /// means added by hand. Added in ABI 12.13; an init member, so a plugin built
+    /// against the older shape still constructs and reads this record.
+    /// </summary>
+    public string? AddedBy { get; init; }
+}
 
 public record PluginLibraryMovie(
     int Id,

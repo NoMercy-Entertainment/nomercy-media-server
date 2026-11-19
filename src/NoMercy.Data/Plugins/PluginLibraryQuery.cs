@@ -52,6 +52,9 @@ public class PluginLibraryQuery(
         if (library is { } only)
             shows = shows.Where(show => show.LibraryId == only);
 
+        // The link for the show's own library says why it is there (one row at
+        // most: the link's key is library and show). A correlated scalar
+        // subquery, so SQLite needs no APPLY.
         return await shows
             .Select(show => new PluginLibraryShow(
                 show.Id,
@@ -61,7 +64,15 @@ public class PluginLibraryQuery(
                 show.Folder,
                 show.NumberOfEpisodes,
                 show.HaveEpisodes ?? 0
-            ))
+            )
+            {
+                AddedBy = context
+                    .LibraryTv.Where(link =>
+                        link.TvId == show.Id && link.LibraryId == show.LibraryId
+                    )
+                    .Select(link => link.AddedBy)
+                    .FirstOrDefault(),
+            })
             .ToListAsync(ct);
     }
 
