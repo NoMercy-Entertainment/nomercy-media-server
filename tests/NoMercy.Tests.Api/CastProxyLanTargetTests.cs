@@ -84,6 +84,24 @@ public class CastProxyLanTargetTests
         host.Should().BeNull();
     }
 
+    // Without mDNS (the server container) a TV row has no LAN address; its own hub
+    // connection came from one, and the wake path already uses it.
+    [Fact]
+    public void ResolveLanTarget_WithoutALanAddress_UsesTheLanAddressTheTvConnectedFrom()
+    {
+        Device tv = new()
+        {
+            Name = "Bedroom TV",
+            Ip = "192.168.2.80",
+            LanIp = null,
+        };
+
+        (string? host, int port) = CastProxyController.ResolveLanTarget(tv);
+
+        host.Should().Be("192.168.2.80");
+        port.Should().Be(DefaultControlPort);
+    }
+
     [Fact]
     public void ResolveLanTarget_TreatsABlankLanAddressAsAbsent()
     {

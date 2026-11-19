@@ -22,6 +22,7 @@ using NoMercy.Api.Services.Cast;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Cast;
 using NoMercy.Networking.Http;
 using NoMercy.NmSystem.Information;
 
@@ -62,7 +63,7 @@ public class CastProxyController(
     /// </summary>
     internal static (string? Host, int Port) ResolveLanTarget(Device tv) =>
         string.IsNullOrWhiteSpace(tv.LanIp)
-            ? (null, TvControlPort)
+            ? (CastAddress.Resolve(null, tv.Ip), TvControlPort)
             : (tv.LanIp, tv.LanPort ?? TvControlPort);
 
     // The LAN address comes from mDNS. Pointed at this machine, the proxy would reach the
