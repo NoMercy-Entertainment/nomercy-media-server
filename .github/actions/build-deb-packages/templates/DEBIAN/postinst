@@ -21,8 +21,17 @@ if [ "$1" = "configure" ]; then
             done
         fi
     else
+        # The server is a user unit. Without lingering, systemd stops it when the
+        # user's last session ends and does not start it at boot. Enable lingering
+        # for the person who ran the install (sudo sets SUDO_USER).
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ] && command -v loginctl >/dev/null 2>&1; then
+            loginctl enable-linger "$SUDO_USER" >/dev/null 2>&1 || true
+        fi
         echo "NoMercy is installed. To start it as your user, run:"
         echo "    systemctl --user enable --now nomercymediaserver.service"
+        echo "A user service stops at logout and does not start at boot unless lingering is on."
+        echo "To keep the server running without a login session, run once:"
+        echo "    sudo loginctl enable-linger <your user>"
     fi
 fi
 exit 0
