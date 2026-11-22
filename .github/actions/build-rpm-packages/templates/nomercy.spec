@@ -4,6 +4,9 @@ Release: 1%{?dist}
 Summary: NoMercy MediaServer - complete installation
 License: Proprietary
 URL: https://nomercy.tv
+BugURL: https://github.com/NoMercy-Entertainment/nomercy-media-server/issues
+Vendor: NoMercy Entertainment
+Packager: NoMercy Entertainment <support@nomercy.tv>
 Source0: nomercy-payload.tar.gz
 Source1: NoMercy-MediaServer.desktop
 Source2: icon.png
