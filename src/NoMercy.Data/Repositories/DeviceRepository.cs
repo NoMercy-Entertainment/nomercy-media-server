@@ -22,6 +22,14 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
         return await context.Devices.Include(device => device.ActivityLogs).ToListAsync();
     }
 
+    public async Task<List<Device>> GetListedDevices()
+    {
+        return await context
+            .Devices.Include(device => device.ActivityLogs)
+            .Where(DeviceStateRepository.IsListed)
+            .ToListAsync();
+    }
+
     public async Task AddDeviceAsync(Device device)
     {
         await context.Devices.AddAsync(device);

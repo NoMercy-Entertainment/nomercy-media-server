@@ -37,7 +37,7 @@ public class DevicesController(
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        List<Device> devices = await deviceRepository.GetDevices();
+        List<Device> devices = await deviceRepository.GetListedDevices();
 
         DevicesDto[] devicesDtos =
         [

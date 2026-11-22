@@ -17,6 +17,9 @@ public interface IDeviceRepository
 {
     Task<List<Device>> GetDevices();
 
+    /// <summary>Every row except retired earlier identities: the same set the device picker lists.</summary>
+    Task<List<Device>> GetListedDevices();
+
     Task AddDeviceAsync(Device device);
 
     Task DeleteDeviceAsync(Device device);
