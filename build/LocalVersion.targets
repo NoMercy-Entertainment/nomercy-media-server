@@ -1,0 +1,50 @@
+<Project InitialTargets="NmLocalVersion">
+  <!--
+    A build that is not given a version reports the fallback <Version> in
+    Directory.Build.props, which is only as new as the last release commit on
+    master. A dev server on newer code then called itself 0.1.404. CI passes the
+    release tag as -p:Version, so only local and dev builds took the fallback.
+
+    Here such a build takes the newest plain vMAJOR.MINOR.PATCH tag in the repo
+    instead. The tag is looked up with git's own version sort, not `git describe`:
+    release tags sit on master commits that are not ancestors of dev, so describe
+    on dev finds an old tag (the same trap as .github/scripts/changelog-commits.sh).
+
+    No git, no clone or no release tag keeps the fallback, so a Docker build from
+    a source copy still works. The importing props file copies a Version that
+    arrived from outside (-p:Version in CI) into NmVersionGiven before it sets
+    its own fallback, and then this target does nothing.
+  -->
+  <Target Name="NmLocalVersion" Condition="'$(NmVersionGiven)' == ''">
+    <!-- Ascending, because the batch below keeps the last item: the newest. -->
+    <Exec
+      Command="git tag --list &quot;v[0-9]*.[0-9]*.[0-9]*&quot; --sort=v:refname"
+      WorkingDirectory="$(MSBuildThisFileDirectory)"
+      ConsoleToMSBuild="true"
+      IgnoreExitCode="true"
+      IgnoreStandardErrorWarningFormat="true"
+      StandardOutputImportance="low"
+      StandardErrorImportance="low"
+    >
+      <Output TaskParameter="ConsoleOutput" ItemName="NmReleaseTag" />
+    </Exec>
+
+    <ItemGroup>
+      <NmPlainReleaseTag
+        Include="@(NmReleaseTag)"
+        Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^v[0-9]+\.[0-9]+\.[0-9]+$'))"
+      />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <NmNewestReleaseTag>%(NmPlainReleaseTag.Identity)</NmNewestReleaseTag>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(NmNewestReleaseTag)' != ''">
+      <Version>$(NmNewestReleaseTag.Substring(1))</Version>
+      <AssemblyVersion>$(Version).0</AssemblyVersion>
+      <FileVersion>$(Version).0</FileVersion>
+      <InformationalVersion>$(Version)</InformationalVersion>
+    </PropertyGroup>
+  </Target>
+</Project>

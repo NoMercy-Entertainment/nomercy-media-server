@@ -11,6 +11,8 @@
     <PackageProjectUrl>https://nomercy.tv</PackageProjectUrl>
     <RepositoryUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</RepositoryUrl>
 
+    <!-- Empty unless the caller (CI: -p:Version) gave a version; see build/LocalVersion.targets. -->
+    <NmVersionGiven>$(Version)</NmVersionGiven>
     <Version>0.1.404</Version>
 
     <!--
@@ -27,6 +29,16 @@
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
   </PropertyGroup>
+
+  <!--
+    The <Version> above is only a fallback. A build that CI did not give a
+    version takes the newest release tag instead (build/LocalVersion.targets).
+    A Docker build copies this file alone, so the import is optional.
+  -->
+  <Import
+    Project="$(MSBuildThisFileDirectory)build\LocalVersion.targets"
+    Condition="Exists('$(MSBuildThisFileDirectory)build\LocalVersion.targets')"
+  />
 
   <!--
       Ship NoMercy.Analyzers (all custom analyzers + code fix providers: named
