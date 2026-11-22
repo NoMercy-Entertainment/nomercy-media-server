@@ -34,6 +34,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Entitlements;
 using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Mvc;
 using Xunit;
 
@@ -81,7 +82,7 @@ public class PluginDeclaredAccessTests
         return new(new ClaimsIdentity(claims, "test"));
     }
 
-    private static PluginInfo Info(bool rest = false, bool ws = false) =>
+    private static PluginInfo Info(bool rest = false, bool ws = false, bool anonymous = false) =>
         new()
         {
             Id = PluginId,
@@ -93,6 +94,7 @@ public class PluginDeclaredAccessTests
             {
                 Hooks = ["ui"],
                 Rest = rest,
+                RestAnonymous = anonymous,
                 Ws = ws,
             },
         };
@@ -119,15 +121,21 @@ public class PluginDeclaredAccessTests
     private static async Task<(ActionExecutingContext Context, bool Reached)> Rest(
         PluginControllerBase controller,
         string method,
-        ClaimsPrincipal user
+        ClaimsPrincipal user,
+        bool anonymous = false,
+        bool lan = false
     )
     {
         Mock<IPluginManager> manager = new();
-        manager.Setup(one => one.GetPluginInfo(PluginId)).Returns(Info(rest: true));
+        manager
+            .Setup(one => one.GetPluginInfo(PluginId))
+            .Returns(Info(rest: true, anonymous: anonymous));
 
         RouteData route = new();
         route.Values["pluginId"] = PluginId.ToString();
         DefaultHttpContext http = new() { User = user };
+        if (lan)
+            http.Features.Set(new PluginLanDispatch(PluginId, "device-1", "Living room"));
 
         // Controller attributes come before the action's, as the endpoint lists them.
         List<object> metadata = [];
@@ -236,6 +244,79 @@ public class PluginDeclaredAccessTests
         );
 
         reached.Should().BeFalse("the server's owner is the one the access resolver holds");
+    }
+
+    [Fact]
+    public async Task Rest_lan_device_is_refused_an_owner_only_action()
+    {
+        (ActionExecutingContext context, bool reached) = await Rest(
+            new SharedController(),
+            nameof(SharedController.Wipe),
+            new ClaimsPrincipal(),
+            lan: true
+        );
+
+        reached.Should().BeFalse();
+        context.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Rest_lan_device_still_reaches_an_action_without_an_owner_requirement()
+    {
+        (_, bool reached) = await Rest(
+            new SharedController(),
+            nameof(SharedController.Open),
+            new ClaimsPrincipal(),
+            lan: true
+        );
+
+        reached.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Rest_open_surface_refuses_an_owner_only_action_for_everyone_but_the_owner(
+        bool signedInMember
+    )
+    {
+        ClaimsPrincipal caller = signedInMember ? User(MemberId) : new ClaimsPrincipal();
+
+        (ActionExecutingContext context, bool reached) = await Rest(
+            new SharedController(),
+            nameof(SharedController.Wipe),
+            caller,
+            anonymous: true
+        );
+
+        reached.Should().BeFalse();
+        context.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Rest_open_surface_admits_the_owner_to_an_owner_only_action()
+    {
+        (_, bool reached) = await Rest(
+            new SharedController(),
+            nameof(SharedController.Wipe),
+            User(OwnerId),
+            anonymous: true
+        );
+
+        reached.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Rest_open_surface_keeps_an_action_without_an_owner_requirement_open()
+    {
+        (_, bool reached) = await Rest(
+            new SharedController(),
+            nameof(SharedController.Open),
+            new ClaimsPrincipal(),
+            anonymous: true
+        );
+
+        reached.Should().BeTrue();
     }
 
     // --- Page routes, nav, view actions (decisions 3, 4, 5) -----------------
@@ -560,6 +641,179 @@ public class PluginDeclaredAccessTests
             )
             .Distinct()
             .ToList();
+
+    // --- Posted action, action shape, undeclared owner route ----------------
+
+    private static PluginView TwoFormsView(PluginRouteAccess second) =>
+        new()
+        {
+            Components =
+            [
+                new()
+                {
+                    Id = "profile",
+                    Component = "NMButton",
+                    Action = Intent("submitForm", "profile-form", PluginRouteAccess.Shared),
+                },
+                new()
+                {
+                    Id = "admin",
+                    Component = "NMButton",
+                    Action = Intent("submitForm", "admin-form", second),
+                },
+            ],
+        };
+
+    private static Task<IActionResult> PostValues(PluginUiController controller, string? action) =>
+        controller.Submit(
+            PluginId,
+            "/",
+            null,
+            new()
+            {
+                Action = action,
+                Values = new() { ["field"] = "value" },
+            },
+            default
+        );
+
+    [Fact]
+    public async Task Post_member_cannot_run_an_owner_form_that_shares_its_type_with_a_shared_one()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ => TwoFormsView(PluginRouteAccess.Owner));
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await Post(member, "submitForm");
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+        plugin.Verify(
+            one =>
+                one.GetViewAsync(
+                    It.Is<PluginViewRequest>(request => request.Action == "submitForm"),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task Post_member_can_run_a_type_whose_actions_are_all_shared()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ => TwoFormsView(PluginRouteAccess.Shared));
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await Post(member, "submitForm");
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task Post_member_with_values_and_no_action_is_refused_when_the_view_holds_an_owner_form()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ => TwoFormsView(PluginRouteAccess.Owner));
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await PostValues(member, null);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+        plugin.Verify(
+            one =>
+                one.GetViewAsync(
+                    It.Is<PluginViewRequest>(request => request.Values.Count > 0),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task Post_member_with_values_and_no_action_passes_when_the_view_holds_no_owner_form()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ => TwoFormsView(PluginRouteAccess.Shared));
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await PostValues(member, null);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task View_member_never_receives_a_hand_written_owner_action_without_a_payload()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ =>
+            new()
+            {
+                Components =
+                [
+                    new()
+                    {
+                        Id = "hand",
+                        Component = "NMButton",
+                        Props = new()
+                        {
+                            ["onPress"] = new Dictionary<string, object?>
+                            {
+                                ["type"] = "callPlugin",
+                                ["access"] = "owner",
+                                ["target"] = "hand-written-wipe",
+                            },
+                        },
+                    },
+                ],
+            }
+        );
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        string json = Json(await member.View(PluginId, "/", null, default));
+
+        json.Should().NotContain("hand-written-wipe");
+    }
+
+    private static readonly IReadOnlyList<PluginNavEntry> HiddenOwnerNav =
+    [
+        new()
+        {
+            Section = PluginKind.Dashboard,
+            Label = "hidden",
+            Route = "/hidden",
+            Access = PluginRouteAccess.Owner,
+        },
+    ];
+
+    [Fact]
+    public async Task Page_member_is_refused_an_owner_nav_route_the_plugin_never_declared()
+    {
+        Mock<IUiPlugin> plugin = Plugin(nav: HiddenOwnerNav);
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await member.View(PluginId, "/hidden", null, default);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+        plugin.Verify(
+            one => one.GetViewAsync(It.IsAny<PluginViewRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task Page_owner_opens_an_owner_nav_route_the_plugin_never_declared()
+    {
+        PluginUiController owner = Controller(Plugin(nav: HiddenOwnerNav).Object, User(OwnerId));
+
+        IActionResult result = await owner.View(PluginId, "/hidden", null, default);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task Page_member_still_opens_a_route_no_owner_nav_entry_names()
+    {
+        PluginUiController member = Controller(Plugin(nav: HiddenOwnerNav).Object, User(MemberId));
+
+        IActionResult result = await member.View(PluginId, "/other", null, default);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
 
     // --- Hub (decision 6) ----------------------------------------------------
 

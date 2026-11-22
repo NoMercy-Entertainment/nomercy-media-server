@@ -50,20 +50,32 @@ public static class PluginViewActionGuard
         return owned.Count > 0;
     }
 
-    /// <summary>Whether a view holds an action of this type that anyone may run.</summary>
-    public static bool HoldsSharedAction(JToken view, string type) =>
-        Actions(view)
-            .Any(action =>
-                !IsOwnerOnly(action)
-                && string.Equals(Text(action, "type"), type, StringComparison.Ordinal)
-            );
+    /// <summary>The view as the plugin built it, owner-only actions still in place.</summary>
+    public static JToken Read(PluginView view, JsonSerializerSettings settings) =>
+        JToken.FromObject(view, JsonSerializer.Create(settings));
+
+    /// <summary>Whether every action of this type in the view is shared; a type an owner action also uses is not.</summary>
+    public static bool OffersOnlySharedAction(JToken view, string type)
+    {
+        List<JObject> ofType = Actions(view).Where(action => IsType(action, type)).ToList();
+
+        return ofType.Count > 0 && !ofType.Any(IsOwnerOnly);
+    }
+
+    /// <summary>Whether a view holds an owner-only action of this type.</summary>
+    public static bool HoldsOwnerAction(JToken view, string type) =>
+        Actions(view).Any(action => IsOwnerOnly(action) && IsType(action, type));
+
+    private static bool IsType(JObject action, string type) =>
+        string.Equals(Text(action, "type"), type, StringComparison.Ordinal);
 
     private static IEnumerable<JObject> Actions(JToken root) =>
         root.SelectTokens("$..*")
             .OfType<JObject>()
-            .Where(node =>
-                Text(node, "type") is not null && node.Properties().Any(Named("payload"))
-            );
+            .Where(node => Text(node, "type") is not null && HasPayloadOrAccess(node));
+
+    private static bool HasPayloadOrAccess(JObject node) =>
+        node.Properties().Any(Named("payload")) || node.Properties().Any(Named("access"));
 
     private static bool IsOwnerOnly(JObject action)
     {

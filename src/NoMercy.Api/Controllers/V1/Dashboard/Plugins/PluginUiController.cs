@@ -314,6 +314,9 @@ public class PluginUiController(
         if (declared is not null && !caller.Admits(declared.Route.Access))
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
+        if (declared is null && !isOwner && NamesOwnerNavEntry(plugin, asked))
+            return ForbiddenResponse(PluginAccessRefusal.For(id));
+
         PluginViewRequest request = new()
         {
             Route = asked,
@@ -335,11 +338,7 @@ public class PluginUiController(
             Origin = $"{Request.Scheme}://{Request.Host}",
         };
 
-        if (
-            !isOwner
-            && input?.Action is { Length: > 0 } posted
-            && !await HoldsSharedAction(plugin, request, posted, ct)
-        )
+        if (!isOwner && input is not null && !await MayPost(plugin, request, input, ct))
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
         try
@@ -421,14 +420,29 @@ public class PluginUiController(
         }
     }
 
-    /// <summary>Whether the route, rendered for this caller without the action, offers it.</summary>
-    private async Task<bool> HoldsSharedAction(
+    /// <summary>Whether an owner-only nav entry of the plugin points at this route.</summary>
+    private static bool NamesOwnerNavEntry(IUiPlugin plugin, string route) =>
+        plugin.NavEntries?.Any(entry =>
+            entry.Access == PluginRouteAccess.Owner
+            && string.Equals(
+                entry.Route.TrimEnd('/'),
+                route.TrimEnd('/'),
+                StringComparison.OrdinalIgnoreCase
+            )
+        ) == true;
+
+    /// <summary>Whether a non-owner may post this: a type an owner action shares cannot be told apart, so it is refused.</summary>
+    private async Task<bool> MayPost(
         IUiPlugin plugin,
         PluginViewRequest request,
-        string action,
+        PluginViewInputDto input,
         CancellationToken ct
     )
     {
+        bool hasAction = input.Action is { Length: > 0 };
+        if (!hasAction && input.Values is not { Count: > 0 })
+            return true;
+
         try
         {
             PluginView view = await plugin.GetViewAsync(
@@ -443,10 +457,11 @@ public class PluginUiController(
                 ct
             );
 
-            return PluginViewActionGuard.HoldsSharedAction(
-                PluginViewActionGuard.WithoutOwnerActions(view, JsonSettings()),
-                action
-            );
+            JToken offered = PluginViewActionGuard.Read(view, JsonSettings());
+
+            return hasAction
+                ? PluginViewActionGuard.OffersOnlySharedAction(offered, input.Action!)
+                : !PluginViewActionGuard.HoldsOwnerAction(offered, "submitForm");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

@@ -21,6 +21,7 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 using NoMercy.Storage.Validation;
 using Xunit;
 
@@ -70,7 +71,8 @@ public class SetupNavigationPluginLabelTests
 
     private static async Task<List<LibraryNavigationEntryDto>> Navigation(
         Mock<IPluginManager> manager,
-        string acceptLanguage
+        string acceptLanguage,
+        IPluginAccessResolver? resolver = null
     )
     {
         Mock<ILibraryRepository> libraries = new();
@@ -96,6 +98,7 @@ public class SetupNavigationPluginLabelTests
             null!,
             libraries.Object,
             manager.Object,
+            resolver ?? Mock.Of<IPluginAccessResolver>(),
             NullLogger<SetupController>.Instance
         )
         {
@@ -140,6 +143,28 @@ public class SetupNavigationPluginLabelTests
         List<LibraryNavigationEntryDto> entries = await Navigation(manager, "en");
 
         entries.Select(entry => entry.Label).Should().BeEquivalentTo("Stations", "Favourites");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnOwnerOnlyEntryIsListedOnlyForTheOwner(bool owner)
+    {
+        PluginNavEntry hidden = new()
+        {
+            Section = PluginKind.Music,
+            Label = "hidden-entry",
+            Route = "/admin",
+            Access = PluginRouteAccess.Owner,
+        };
+        Mock<IPluginManager> manager = Manager(Entry("open-entry", "/"), hidden);
+        Mock<IPluginAccessResolver> resolver = new();
+        resolver.Setup(one => one.IsOwner(Viewer)).Returns(owner);
+
+        List<LibraryNavigationEntryDto> entries = await Navigation(manager, "en", resolver.Object);
+
+        entries.Select(entry => entry.Label).Should().Contain("open-entry");
+        entries.Select(entry => entry.Label).Contains("hidden-entry").Should().Be(owner);
     }
 
     // A bundle the server cannot read costs the plugin its translations, never

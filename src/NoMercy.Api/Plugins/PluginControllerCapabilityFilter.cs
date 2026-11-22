@@ -61,23 +61,34 @@ public class PluginControllerCapabilityFilter(
             return Task.CompletedTask;
         }
 
+        // The action's own attribute is listed after its controller's.
+        PluginRequiresAttribute? requires = context
+            .ActionDescriptor.EndpointMetadata.OfType<PluginRequiresAttribute>()
+            .LastOrDefault();
+        bool ownerOnly = requires?.Access == PluginRouteAccess.Owner;
+
         // A LAN device has no account either. The LAN route already checked
         // its network, its credential and that this route is one the manifest
         // names for devices; it is admitted to this plugin and no other.
         if (context.HttpContext.Features.Get<PluginLanDispatch>() is { } lan)
         {
-            if (lan.PluginId == pluginId)
-                return next();
+            if (lan.PluginId != pluginId)
+            {
+                context.Result = new NotFoundResult();
+                return Task.CompletedTask;
+            }
 
-            context.Result = new NotFoundResult();
-            return Task.CompletedTask;
+            return ownerOnly ? Refuse(context, pluginId) : next();
         }
 
         // A surface the manifest declares open has no account to resolve
-        // access for. Asking anyway refuses every caller, which is an open
-        // surface that is shut.
+        // access for. Only an owner-only action asks who is calling.
         if (info.Capabilities.RestAnonymous)
-            return next();
+        {
+            return ownerOnly && !accessResolver.IsOwner(context.HttpContext.User.UserId())
+                ? Refuse(context, pluginId)
+                : next();
+        }
 
         PluginAccess granted = accessResolver.Resolve(pluginId, context.HttpContext.User.UserId());
 
@@ -91,11 +102,6 @@ public class PluginControllerCapabilityFilter(
             context.HttpContext.Request.Query["surface"].ToString(),
             accessResolver
         );
-
-        // The action's own attribute is listed after its controller's.
-        PluginRequiresAttribute? requires = context
-            .ActionDescriptor.EndpointMetadata.OfType<PluginRequiresAttribute>()
-            .LastOrDefault();
 
         if (requires is not null && !caller.Admits(requires.Access))
             return Refuse(context, pluginId);

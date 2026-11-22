@@ -25,6 +25,7 @@ using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 
 namespace NoMercy.Api.Controllers.V1;
 
@@ -40,6 +41,7 @@ public class SetupController(
     HomeService homeService,
     ILibraryRepository libraryRepository,
     IPluginManager pluginManager,
+    IPluginAccessResolver accessResolver,
     ILogger<SetupController> logger
 ) : BaseController
 {
@@ -179,8 +181,11 @@ public class SetupController(
     {
         try
         {
+            bool isOwner = accessResolver.IsOwner(User.UserId());
+
             return (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)
                 ?.NavEntries.Where(entry => kinds.Contains(entry.Section))
+                .Where(entry => isOwner || entry.Access != PluginRouteAccess.Owner)
                 .Select(entry => new LibraryNavigationEntryDto
                 {
                     Id = $"plugin-{info.Id}-{entry.Route.Trim('/')}".TrimEnd('-'),
