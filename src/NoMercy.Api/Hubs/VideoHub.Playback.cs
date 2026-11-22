@@ -658,7 +658,7 @@ public partial class VideoHub
         {
             _logger.LogInformation(
                 "Active video device changed user={User} from={From} to={To}",
-                user.Id,
+                UserLogText.Of(user),
                 playerState.DeviceId,
                 deviceId
             );
@@ -669,7 +669,7 @@ public partial class VideoHub
             _logger.LogWarning(
                 "Video device change to {DeviceId} not applied: user={User} has no playback state, ChangeDevice was not sent",
                 deviceId,
-                user.Id
+                UserLogText.Of(user)
             );
             await _videoPlaybackService.UpdatePlaybackState(user, playerState);
             return;

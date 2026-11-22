@@ -83,7 +83,7 @@ public partial class MusicHub
         if (!string.Equals(state.DeviceId, device.DeviceId, StringComparison.Ordinal))
             _logger.LogInformation(
                 "Active music device changed user={User} from={From} to={To}",
-                user.Id,
+                UserLogText.Of(user),
                 state.DeviceId,
                 device.DeviceId
             );

@@ -21,6 +21,8 @@ using Moq;
 using Newtonsoft.Json.Linq;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.Hubs.Filters;
+using NoMercy.Authorization;
+using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Logging;
 using NoMercy.Service;
 using NoMercy.Tests.Api.Infrastructure;
@@ -55,7 +57,52 @@ public class SessionRequestLogFilterTests
     ) NewFilter()
     {
         CapturingLogger<SessionRequestLogFilter> log = new();
-        return (new(log, new SessionLogPolicy()), log);
+        return (new(log, new SessionLogPolicy(), KnownUsers()), log);
+    }
+
+    private const string UserName = "Test Owner";
+
+    private static IUserCache KnownUsers()
+    {
+        Mock<IUserCache> users = new();
+        users.Setup(u => u.GetUser(UserId)).Returns(new User { Id = UserId, Name = UserName });
+        return users.Object;
+    }
+
+    [Fact]
+    public async Task InvokeMethodAsync_KnownUser_LogsTheUserNameWithTheId()
+    {
+        (SessionRequestLogFilter filter, CapturingLogger<SessionRequestLogFilter> log) =
+            NewFilter();
+
+        await filter.InvokeMethodAsync(Invocation(typeof(CastHub), nameof(CastHub.Stop)), Ok);
+
+        log.Entries[0].Message.Should().Contain($"user={UserName} ({UserId})");
+    }
+
+    [Fact]
+    public async Task InvokeMethodAsync_UnknownUser_LogsTheIdAlone()
+    {
+        CapturingLogger<SessionRequestLogFilter> log = new();
+        SessionRequestLogFilter filter = new(log, new SessionLogPolicy(), Mock.Of<IUserCache>());
+
+        await filter.InvokeMethodAsync(Invocation(typeof(CastHub), nameof(CastHub.Stop)), Ok);
+
+        log.Entries[0].Message.Should().Contain($"user={UserId} ");
+    }
+
+    [Fact]
+    public async Task OnConnectedAsync_KnownUser_LogsTheUserNameWithTheId()
+    {
+        (SessionRequestLogFilter filter, CapturingLogger<SessionRequestLogFilter> log) =
+            NewFilter();
+
+        await filter.OnConnectedAsync(
+            new HubLifetimeContext(Caller(), Mock.Of<IServiceProvider>(), HubOf(typeof(VideoHub))),
+            _ => Task.CompletedTask
+        );
+
+        log.Entries[0].Message.Should().Contain($"user={UserName} ({UserId})");
     }
 
     private static HubCallerContext Caller()
@@ -121,7 +168,7 @@ public class SessionRequestLogFilterTests
         log.Entries[0]
             .Message.Should()
             .Contain($"{hubType.Name}.{method}")
-            .And.Contain($"user={UserId}")
+            .And.Contain($"user={UserName} ({UserId})")
             .And.Contain($"device={DeviceId}")
             .And.Contain($"connection={ConnectionId}");
         log.Entries[1].Level.Should().Be(LogLevel.Information);
@@ -315,7 +362,7 @@ public class SessionRequestLogFilterTests
             .Message.Should()
             .Contain("connected")
             .And.Contain("VideoHub")
-            .And.Contain($"user={UserId}")
+            .And.Contain($"user={UserName} ({UserId})")
             .And.Contain($"device={DeviceId}")
             .And.NotContain(Jwt);
     }
@@ -362,7 +409,11 @@ public class SessionRequestLogFilterTests
         options.ApplyEnvironment(name => environment.GetValueOrDefault(name));
         NoMercyLoggerProvider provider = new(options, output);
         return (
-            new(new CustomLogger<SessionRequestLogFilter>(provider), new SessionLogPolicy()),
+            new(
+                new CustomLogger<SessionRequestLogFilter>(provider),
+                new SessionLogPolicy(),
+                KnownUsers()
+            ),
             output
         );
     }

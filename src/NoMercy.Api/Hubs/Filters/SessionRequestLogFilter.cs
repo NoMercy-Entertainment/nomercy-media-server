@@ -23,7 +23,8 @@ namespace NoMercy.Api.Hubs.Filters;
 /// </summary>
 public sealed class SessionRequestLogFilter(
     ILogger<SessionRequestLogFilter> logger,
-    SessionLogPolicy policy
+    SessionLogPolicy policy,
+    IUserCache userCache
 ) : IHubFilter
 {
     public async ValueTask<object?> InvokeMethodAsync(
@@ -36,7 +37,7 @@ public sealed class SessionRequestLogFilter(
 
         string hub = invocationContext.Hub.GetType().Name;
         string method = invocationContext.HubMethodName;
-        string user = invocationContext.Context.User.UserId().ToString();
+        string user = UserLogText.Of(invocationContext.Context.User.UserId(), userCache);
         string device = SessionLogText.DeviceOf(invocationContext.Context);
         string connection = invocationContext.Context.ConnectionId;
         LogLevel level = policy.RequestLevel(method);
@@ -128,7 +129,7 @@ public sealed class SessionRequestLogFilter(
             logger.LogInformation(
                 "Hub connected {Hub} user={User} device={Device} connection={Connection}",
                 context.Hub.GetType().Name,
-                context.Context.User.UserId(),
+                UserLogText.Of(context.Context.User.UserId(), userCache),
                 SessionLogText.DeviceOf(context.Context),
                 context.Context.ConnectionId
             );
@@ -147,7 +148,7 @@ public sealed class SessionRequestLogFilter(
                 exception is null ? LogLevel.Information : LogLevel.Warning,
                 "Hub disconnected {Hub} user={User} device={Device} connection={Connection} reason={Reason}",
                 context.Hub.GetType().Name,
-                context.Context.User.UserId(),
+                UserLogText.Of(context.Context.User.UserId(), userCache),
                 SessionLogText.DeviceOf(context.Context),
                 context.Context.ConnectionId,
                 exception?.GetType().Name ?? "closed"

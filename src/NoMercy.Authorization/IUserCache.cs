@@ -42,3 +42,13 @@ public interface IUserCache
     Task RefreshUsersAsync(MediaContext context);
     Task RefreshFolderIdsAsync(MediaContext context);
 }
+
+/// <summary>The text a log line shows for a user: the name with the id.</summary>
+public static class UserLogText
+{
+    public static string Of(User user) =>
+        string.IsNullOrWhiteSpace(user.Name) ? user.Id.ToString() : $"{user.Name} ({user.Id})";
+
+    public static string Of(Guid userId, IUserCache userCache) =>
+        userCache.GetUser(userId) is { } user ? Of(user) : userId.ToString();
+}

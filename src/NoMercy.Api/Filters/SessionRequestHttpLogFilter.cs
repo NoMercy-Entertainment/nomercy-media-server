@@ -24,8 +24,10 @@ namespace NoMercy.Api.Filters;
 /// One request line and one result line for the cast and device HTTP routes. The path is
 /// logged without its query string, which can carry an access token.
 /// </summary>
-public sealed class SessionRequestHttpLogFilter(ILogger<SessionRequestHttpLogFilter> logger)
-    : IAsyncActionFilter
+public sealed class SessionRequestHttpLogFilter(
+    ILogger<SessionRequestHttpLogFilter> logger,
+    IUserCache userCache
+) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(
         ActionExecutingContext context,
@@ -35,7 +37,7 @@ public sealed class SessionRequestHttpLogFilter(ILogger<SessionRequestHttpLogFil
         Microsoft.AspNetCore.Http.HttpRequest request = context.HttpContext.Request;
         string method = request.Method;
         string path = request.Path.Value ?? string.Empty;
-        string user = context.HttpContext.User.UserId().ToString();
+        string user = UserLogText.Of(context.HttpContext.User.UserId(), userCache);
         string device =
             SessionLogText.SafeIdentifierOrNull(
                 context.RouteData.Values.GetValueOrDefault("deviceId")?.ToString()

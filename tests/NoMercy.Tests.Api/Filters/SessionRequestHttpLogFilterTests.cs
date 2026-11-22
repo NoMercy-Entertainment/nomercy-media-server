@@ -16,7 +16,10 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using Moq;
 using NoMercy.Api.Filters;
+using NoMercy.Authorization;
+using NoMercy.Database.Models.Users;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -26,6 +29,7 @@ namespace NoMercy.Tests.Api.Filters;
 public class SessionRequestHttpLogFilterTests
 {
     private static readonly Guid UserId = Guid.NewGuid();
+    private const string UserName = "Test Owner";
     private const string DeviceId = "01HZZZZZZZZZZZZZZZZZZZZZZZ";
     private const string Token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJl";
 
@@ -51,7 +55,10 @@ public class SessionRequestHttpLogFilterTests
             new object()
         );
 
-        await new SessionRequestHttpLogFilter(log).OnActionExecutionAsync(
+        Mock<IUserCache> users = new();
+        users.Setup(u => u.GetUser(UserId)).Returns(new User { Id = UserId, Name = UserName });
+
+        await new SessionRequestHttpLogFilter(log, users.Object).OnActionExecutionAsync(
             executing,
             () =>
                 Task.FromResult(
@@ -74,7 +81,7 @@ public class SessionRequestHttpLogFilterTests
         log.Entries[0]
             .Message.Should()
             .Contain($"POST /api/v1/cast/{DeviceId}/launch")
-            .And.Contain($"user={UserId}")
+            .And.Contain($"user={UserName} ({UserId})")
             .And.Contain($"device={DeviceId}");
         log.Entries[1].Message.Should().Contain("status=200").And.MatchRegex(@"in \d+ms");
         string.Join('\n', log.Entries.Select(entry => entry.Message)).Should().NotContain(Token);
