@@ -265,10 +265,9 @@ jobs:
           git fetch origin master dev
 
           # Generate changelog from commits since last tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.201")
-
-          # Get commits since last tag, excluding version bump commits
-          COMMITS=$(git log "$LATEST_TAG"..origin/dev --pretty=format:"%s" -- src/ | grep -v "^chore: bump version" || true)
+          # Commits since the newest release tag (global lookup, not git describe:
+          # release tags sit on master, so describe on dev finds v0.1.404).
+          COMMITS=$(bash .github/scripts/changelog-commits.sh origin/dev)
 
           # Initialize changelog sections
           FEATURES=""
