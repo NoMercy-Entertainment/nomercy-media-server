@@ -310,6 +310,66 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         }
     }
 
+    // #142: a handoff to a sleeping owned TV must move the registry too.
+    [Fact]
+    public async Task ChangeDeviceCommand_OfflineOwnedTvTarget_KeepsRegistryAlignedWithPlayerState()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
+        await SeedOwnedTvAsync(contextFactory, userId, tvDeviceId);
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        PlaylistTrackDto currentTrack = MakeTrack();
+        stateManager.UpdateState(
+            userId,
+            new()
+            {
+                DeviceId = phoneDeviceId,
+                PlayState = true,
+                CurrentItem = currentTrack,
+                Playlist = [currentTrack],
+                CurrentList = new("/music/albums/test", UriKind.Relative),
+                Time = 15_000,
+            }
+        );
+        registry.Set(userId, phoneClient);
+
+        try
+        {
+            MusicHub hub = CreateHub(
+                phoneConnectionId,
+                userId,
+                chromeCast: Mock.Of<IChromeCastService>()
+            );
+
+            await hub.ChangeDeviceCommand(tvDeviceId);
+
+            stateManager.TryGetValue(userId, out MusicPlayerState? after).Should().BeTrue();
+            after!.DeviceId.Should().Be(tvDeviceId);
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(tvDeviceId);
+        }
+        finally
+        {
+            Cleanup(userId, user, phoneConnectionId);
+        }
+    }
+
     [Fact]
     public async Task ChangeDeviceCommand_NoExistingPlayerState_IsNoOp()
     {

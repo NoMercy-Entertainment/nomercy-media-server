@@ -293,6 +293,10 @@ public partial class MusicHub
             );
         }
 
+        Device? targetDevice = connectedDevices.FirstOrDefault(d =>
+            d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+        );
+
         if (_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
         {
             playerState.DeviceId = deviceId;
@@ -302,9 +306,6 @@ public partial class MusicHub
             // device happened to be at. ResolveTransferVolume prefers a level
             // already known in DeviceVolumes, then the device's own persisted
             // VolumePercent, then the shared safe default.
-            Device? targetDevice = connectedDevices.FirstOrDefault(d =>
-                d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-            );
             playerState.VolumePercentage = MusicVolumeResolver.ResolveTransferVolume(
                 playerState,
                 deviceId,
@@ -356,7 +357,8 @@ public partial class MusicHub
         // themselves (e.g. the web client that initiated this ChangeDevice), while
         // playerState says TV — and downstream calls that consult the registry
         // would see a stale active.
-        Device? targetClient = OwnedClients(user.Id, deviceId).FirstOrDefault();
+        // A sleeping TV has no live client; its device row still names the new active.
+        Device? targetClient = OwnedClients(user.Id, deviceId).FirstOrDefault() ?? targetDevice;
         if (targetClient is not null)
             _activeDeviceRegistry.Set(user.Id, targetClient);
 
