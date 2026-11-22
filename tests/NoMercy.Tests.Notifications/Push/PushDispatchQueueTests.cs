@@ -169,6 +169,49 @@ public class PushDispatchQueueTests
     }
 
     /// <summary>
+    /// Any exception a dispatcher lets escape must cost one request, not the loop.
+    /// </summary>
+    [Fact]
+    public async Task Drain_Survives_An_Unexpected_Exception_And_Keeps_Delivering()
+    {
+        TaskCompletionSource second = new();
+        int calls = 0;
+
+        Mock<IPushDispatcher> dispatcher = new();
+        dispatcher
+            .Setup(d =>
+                d.DispatchAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<PushPayload>(),
+                    It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Returns(() =>
+            {
+                calls++;
+                if (calls == 1)
+                    return Task.FromException(new InvalidOperationException("boom"));
+
+                second.TrySetResult();
+                return Task.CompletedTask;
+            });
+
+        PushDispatchQueue queue = new(dispatcher.Object, new NotificationDispatcher([]));
+        using CancellationTokenSource cts = new();
+        Task drain = queue.DrainAsync(cts.Token);
+
+        queue.Enqueue(Request());
+        queue.Enqueue(Request());
+
+        await second.Task.WaitAsync(Patience);
+        Assert.False(drain.IsCompleted);
+
+        await cts.CancelAsync();
+    }
+
+    /// <summary>
     /// A request carrying a UserId is one person's notification, and the
     /// channel-wide dispatcher would seal it for every subscriber this server
     /// can see. It has to leave through the transports instead, which pick
