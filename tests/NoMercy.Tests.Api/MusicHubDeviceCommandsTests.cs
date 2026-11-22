@@ -514,6 +514,122 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         }
     }
 
+    // #142 (b): a handoff with no player state must claim a sleeping owned TV, and the
+    // StartPlaybackCommand that follows must not hand active back to the phone.
+    [Fact]
+    public async Task ChangeDeviceCommand_NoPlayerState_SleepingOwnedTv_ClaimsRegistryAndSurvivesStartPlayback()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
+        await SeedOwnedTvAsync(contextFactory, userId, tvDeviceId);
+        await GrantAlbumLibraryAsync(contextFactory, userId, NoMercyApiFactory.AlbumId1);
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        try
+        {
+            MusicHub hub = CreateHub(
+                phoneConnectionId,
+                userId,
+                chromeCast: Mock.Of<IChromeCastService>()
+            );
+
+            await hub.ChangeDeviceCommand(tvDeviceId);
+
+            registry.TryGet(userId, out Device? claimed).Should().BeTrue();
+            claimed!.DeviceId.Should().Be(tvDeviceId);
+
+            await hub.StartPlaybackCommand(
+                "album",
+                NoMercyApiFactory.AlbumId1,
+                NoMercyApiFactory.TrackId1
+            );
+
+            stateManager.TryGetValue(userId, out MusicPlayerState? state).Should().BeTrue();
+            state!.DeviceId.Should().Be(tvDeviceId);
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(tvDeviceId);
+        }
+        finally
+        {
+            await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
+            await ctx.LibraryUser.Where(lu => lu.UserId == userId).ExecuteDeleteAsync();
+            Cleanup(userId, user, phoneConnectionId);
+        }
+    }
+
+    // #142 (a): the state names the sleeping TV after a handoff. A follow-up playback
+    // command from the phone (a new queue, state has no current item) must not put the
+    // phone back in the registry while state.DeviceId is the TV.
+    [Fact]
+    public async Task StartPlaybackCommand_AfterHandoffToSleepingTv_KeepsTvActiveInRegistry()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
+        await SeedOwnedTvAsync(contextFactory, userId, tvDeviceId);
+        await GrantAlbumLibraryAsync(contextFactory, userId, NoMercyApiFactory.AlbumId1);
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        stateManager.UpdateState(userId, new() { DeviceId = phoneDeviceId, Playlist = [] });
+        registry.Set(userId, phoneClient);
+
+        try
+        {
+            MusicHub hub = CreateHub(
+                phoneConnectionId,
+                userId,
+                chromeCast: Mock.Of<IChromeCastService>()
+            );
+
+            await hub.ChangeDeviceCommand(tvDeviceId);
+            await hub.StartPlaybackCommand(
+                "album",
+                NoMercyApiFactory.AlbumId1,
+                NoMercyApiFactory.TrackId1
+            );
+
+            stateManager.TryGetValue(userId, out MusicPlayerState? state).Should().BeTrue();
+            state!.DeviceId.Should().Be(tvDeviceId);
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(state.DeviceId);
+        }
+        finally
+        {
+            await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
+            await ctx.LibraryUser.Where(lu => lu.UserId == userId).ExecuteDeleteAsync();
+            Cleanup(userId, user, phoneConnectionId);
+        }
+    }
+
     // Grants the seeded album's library to this test user.
     private static async Task GrantAlbumLibraryAsync(
         IDbContextFactory<MediaContext> contextFactory,
