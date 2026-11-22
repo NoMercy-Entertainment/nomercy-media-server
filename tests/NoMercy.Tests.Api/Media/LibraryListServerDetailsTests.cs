@@ -21,6 +21,7 @@ using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 using Xunit;
 using MediaLibrariesController = NoMercy.Api.Controllers.V1.Media.LibrariesController;
 
@@ -109,6 +110,7 @@ public class LibraryListServerDetailsTests
                 null!,
                 libraries.Object,
                 Mock.Of<IPluginManager>(),
+                Mock.Of<IPluginAccessResolver>(),
                 NullLogger<SetupController>.Instance
             )
             {

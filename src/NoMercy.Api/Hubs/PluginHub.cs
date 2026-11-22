@@ -114,7 +114,8 @@ public class PluginHub(
                 Context.User,
                 granted,
                 Context.GetHttpContext()?.Request.Headers.AcceptLanguage.ToString(),
-                PluginSurface.Web
+                PluginSurface.Web,
+                access
             ),
         };
 

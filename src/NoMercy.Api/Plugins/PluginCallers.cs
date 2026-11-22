@@ -12,6 +12,7 @@
 using System.Security.Claims;
 using NoMercy.Authorization;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 
 namespace NoMercy.Api.Plugins;
 
@@ -27,16 +28,18 @@ public static class PluginCallers
     /// <param name="access">What the access resolver decided for this plugin and this user.</param>
     /// <param name="acceptLanguage">The Accept-Language header, or nothing; English when empty.</param>
     /// <param name="surface">The surface asked for; an unknown one falls back to web.</param>
+    /// <param name="owners">Decides who the owner is, the same way plugin access does.</param>
     public static PluginCaller For(
         ClaimsPrincipal? user,
         PluginAccess access,
         string? acceptLanguage,
-        string? surface
+        string? surface,
+        IPluginAccessResolver owners
     ) =>
         new(
             new UserId(new Ulid(user.UserId())),
             user.UserName(),
-            user.Role() == "owner" ? PluginRole.Owner : PluginRole.Member,
+            owners.IsOwner(user.UserId()) ? PluginRole.Owner : PluginRole.Member,
             access,
             acceptLanguage is { Length: > 0 } ? acceptLanguage : "en",
             PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web

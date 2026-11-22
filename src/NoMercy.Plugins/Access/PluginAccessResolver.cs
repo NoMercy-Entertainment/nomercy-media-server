@@ -81,6 +81,8 @@ public class PluginAccessResolver(
         return PluginAccess.Shared;
     }
 
+    public bool IsOwner(Guid userId) => userId != Guid.Empty && userId == ownerId();
+
     private bool Holds(Ulid pluginId, Guid userId) =>
         entitlements.Current.For(pluginId, userId, clock.GetUtcNow()) is not null;
 }

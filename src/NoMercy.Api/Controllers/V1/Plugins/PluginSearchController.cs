@@ -17,6 +17,7 @@ using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Plugins;
 using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Search;
 
 namespace NoMercy.Api.Controllers.V1.Plugins;
@@ -34,7 +35,8 @@ namespace NoMercy.Api.Controllers.V1.Plugins;
 [Tags("Plugins")]
 [ApiVersion(1.0)]
 [Authorize]
-public class PluginSearchController(IPluginSearchService search) : BaseController
+public class PluginSearchController(IPluginSearchService search, IPluginAccessResolver owners)
+    : BaseController
 {
     /// <summary>How long the whole fan-out gets before the answer is sent without the stragglers.</summary>
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(3);
@@ -52,7 +54,8 @@ public class PluginSearchController(IPluginSearchService search) : BaseControlle
             User,
             PluginAccess.Owned,
             Request.Headers.AcceptLanguage.ToString(),
-            asking
+            asking,
+            owners
         );
 
         IReadOnlyList<PluginSearchGroup> groups = await search.SearchAsync(

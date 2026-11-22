@@ -35,4 +35,10 @@ public class NullPluginHubContext : IPluginHubContext
         string method,
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
     ) { }
+
+    public void HandleWithAccess(
+        string method,
+        PluginRouteAccess access,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    ) { }
 }
