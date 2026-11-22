@@ -110,10 +110,15 @@ internal sealed class RemoteHub(RemoteCall call) : IPluginHubContext
     )
     {
         lock (_handlers)
+        {
             _handlers[method] = handler;
+            _access[method] = access;
+        }
 
         call.Tell("hub", nameof(Handle), new { method, access });
     }
+
+    private readonly Dictionary<string, PluginRouteAccess> _access = new();
 
     private readonly Dictionary<
         string,
@@ -130,8 +135,18 @@ internal sealed class RemoteHub(RemoteCall call) : IPluginHubContext
     {
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>>? handler;
 
+        PluginRouteAccess required;
+
         lock (_handlers)
+        {
             _handlers.TryGetValue(method, out handler);
+            _access.TryGetValue(method, out required);
+        }
+
+        if (handler is not null && !caller.Admits(required))
+            throw new PluginRefusedException(
+                PluginCaller.RefuseRoute(caller, method, call.PluginId.ToString())
+            );
 
         return handler is null ? null : await handler(caller, payload, ct);
     }

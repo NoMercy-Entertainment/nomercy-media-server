@@ -61,10 +61,14 @@ public class PluginHubRouter(Func<IPluginManager> pluginManager, ILogger<PluginH
         if (info.Capabilities?.Ws != true)
             return false;
 
+        // No caller cannot show owner rights, so an owner method fails closed.
         if (
-            message.Caller is { } caller
-            && delegateHandler?.AccessFor(message.Method) is { } required
-            && !caller.Admits(required)
+            delegateHandler?.AccessFor(message.Method) is { } required
+            && (
+                message.Caller is { } caller
+                    ? !caller.Admits(required)
+                    : required == PluginRouteAccess.Owner
+            )
         )
             return false;
 

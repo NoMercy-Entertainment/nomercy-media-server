@@ -51,6 +51,45 @@ public class RemoteContextTests
     }
 
     [Fact]
+    public async Task RemoteHub_refuses_an_owner_method_for_a_member_and_runs_it_for_the_owner()
+    {
+        RecordingBroker broker = new(PluginCallResponse.Value("null"));
+        RemotePluginContext context = Build(broker);
+        bool ran = false;
+
+        context.Hub.HandleWithAccess(
+            "wipe",
+            PluginRouteAccess.Owner,
+            (_, _, _) =>
+            {
+                ran = true;
+                return Task.FromResult<object?>(null);
+            }
+        );
+
+        Func<Task> asMember = () => InvokeHub(context, "wipe", CallerOf(PluginRole.Member));
+        await asMember.Should().ThrowAsync<PluginRefusedException>();
+        ran.Should().BeFalse();
+
+        await InvokeHub(context, "wipe", CallerOf(PluginRole.Owner));
+        ran.Should().BeTrue();
+    }
+
+    private static Task InvokeHub(
+        RemotePluginContext context,
+        string method,
+        PluginCaller caller
+    ) =>
+        (Task)
+            context
+                .Hub.GetType()
+                .GetMethod("InvokeAsync")!
+                .Invoke(context.Hub, [method, caller, null, CancellationToken.None])!;
+
+    private static PluginCaller CallerOf(PluginRole role) =>
+        new(new UserId(Ulid.NewUlid()), "Sam", role, PluginAccess.Shared, "en", "web");
+
+    [Fact]
     public async Task ARefusal_ReachesThePluginAsPluginRefusedException()
     {
         RecordingBroker broker = new(

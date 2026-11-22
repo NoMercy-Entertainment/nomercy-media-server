@@ -706,4 +706,33 @@ public class PluginDeclaredAccessTests
         routed.Should().BeFalse();
         ran.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task Router_refuses_an_owner_only_method_when_the_message_has_no_caller()
+    {
+        (_, PluginHubRouter router, List<string> ran) = Hub(User(MemberId));
+        Mock<IPluginHubHandler> plain = new();
+        plain.SetupGet(one => one.PluginId).Returns(PluginId);
+        plain
+            .Setup(one =>
+                one.HandleAsync(
+                    It.IsAny<PluginHubMessage>(),
+                    It.IsAny<IPluginHubClient>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback(() => ran.Add("plain"))
+            .Returns(Task.CompletedTask);
+        router.Register(plain.Object);
+
+        bool routed = await router.RouteAsync(
+            PluginId,
+            new() { Method = "wipe", ConnectionId = "connection-1" },
+            new Mock<IPluginHubClient>().Object,
+            default
+        );
+
+        routed.Should().BeFalse();
+        ran.Should().BeEmpty();
+    }
 }
