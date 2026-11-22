@@ -145,6 +145,26 @@ jobs:
       # this reusable workflow is refused with a workflow mismatch however the
       # policy names the caller.
 
+      # Software bill of materials for the server, one per release (#129).
+      # CycloneDX JSON, built from the restored dependency graph of the
+      # executable project. Written into ./output before the manifest step so
+      # it is hashed, listed in manifest.json, signed with it and uploaded like
+      # every other asset. Test-only and development dependencies are left out:
+      # the SBOM describes what ships.
+      - name: Generate CycloneDX SBOM
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet tool install CycloneDX --version 6.3.2 --tool-path "$RUNNER_TEMP/cyclonedx"
+          SBOM="NoMercyMediaServer-${RELEASE_VERSION}-sbom.cdx.json"
+          "$RUNNER_TEMP/cyclonedx/dotnet-CycloneDX" src/NoMercy.Service/NoMercy.Service.csproj \
+            --exclude-dev \
+            --output-format Json \
+            --set-version "$RELEASE_VERSION" \
+            --output ./output \
+            --filename "$SBOM"
+          test -s "./output/$SBOM"
+
       - name: Generate SHA-256 checksums and release-info.json
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
