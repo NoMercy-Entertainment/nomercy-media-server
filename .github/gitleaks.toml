@@ -41,3 +41,11 @@ paths = [
   '''tests/NoMercy\.Tests\.Plugins/PluginRemoteLoaderTests\.cs$''',
 ]
 regexes = ['''Token(?: =>)?(?: =)? "3F2A9C01B7E84D6A";$''']
+
+[[rules]]
+id = "jwt"
+
+# The TMDB read token is public by design: the NoMercy API hands it to every server.
+[[rules.allowlists]]
+description = "TMDB read token, public by design"
+paths = ['''tests/NoMercy\.Tests\.Providers/TMDB/TmdbTestBase\.cs$''']
