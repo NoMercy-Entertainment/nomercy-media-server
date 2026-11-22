@@ -100,6 +100,17 @@ public static class LogCategories
         ("opensub", "opensubs"),
         ("youtube", "youtube"),
         ("tvdb", "tvdb"),
+        ("sessionrequest", "session"),
+        ("videohub", "session"),
+        ("musichub", "session"),
+        ("devicehub", "session"),
+        ("casthub", "session"),
+        ("clientmessenger", "session"),
+        ("castwake", "cast"),
+        ("castpanel", "cast"),
+        ("castproxy", "cast"),
+        ("casttoken", "cast"),
+        ("chromecast", "cast"),
         ("encoder", "encoder"),
         ("queue", "queue"),
         ("ripper", "ripper"),
@@ -121,6 +132,9 @@ public static class LogCategories
         Build(),
         StringComparer.OrdinalIgnoreCase
     );
+
+    /// <summary>The key of every registered category.</summary>
+    public static IEnumerable<string> Keys => Map.Keys;
 
     /// <summary>The fallback category used when nothing else matches.</summary>
     public static LogCategory Default => Map["app"];
@@ -220,6 +234,8 @@ public static class LogCategories
         Add("ping", "Ping", "Networking", "#94e2d5", "#0a7fa8");
         Add("socket", "Socket", "Networking", "#7fc8f0", "#1e66f5");
         Add("request", "Request", "Networking", "#89dceb", "#04a5e5");
+        Add("session", "Session", "Networking", "#74c7ec", "#209fb5");
+        Add("cast", "Cast", "Networking", "#fab387", "#fe640b");
 
         // Providers (deterministic hue ramp -> matches the approved swatch sheets)
         for (int i = 0; i < ProviderKeys.Length; i++)

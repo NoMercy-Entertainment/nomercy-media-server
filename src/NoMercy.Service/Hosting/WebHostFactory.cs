@@ -23,6 +23,14 @@ namespace NoMercy.Service.Hosting;
 
 public static class WebHostFactory
 {
+    private static NmSystem.Logging.NoMercyLoggerOptions WithLogLevelSettings(
+        NmSystem.Logging.NoMercyLoggerOptions options
+    )
+    {
+        options.ApplyEnvironment(Environment.GetEnvironmentVariable);
+        return options;
+    }
+
     public static WebApplication Create(StartupOptions options, bool forceHttp = false)
     {
         // One dual-mode socket serves IPv4 and IPv6 clients. It falls back to IPv4-only
@@ -31,44 +39,49 @@ public static class WebHostFactory
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton<NmSystem.Logging.NoMercyLoggerOptions>(_ =>
-            new()
-            {
-                MinimumLevel = LogLevel.Information,
-                LogDirectory = AppFiles.LogPath,
-                MaxRunFiles = 10,
-                BridgeLegacyLogger = true,
-                WidthProvider = static () =>
+            WithLogLevelSettings(
+                new()
                 {
-                    try
+                    MinimumLevel = LogLevel.Information,
+                    LogDirectory = AppFiles.LogPath,
+                    MaxRunFiles = 10,
+                    BridgeLegacyLogger = true,
+                    WidthProvider = static () =>
                     {
-                        if (!Console.IsOutputRedirected)
+                        try
                         {
-                            int w = Console.WindowWidth;
-                            if (w > 0)
-                                return w;
+                            if (!Console.IsOutputRedirected)
+                            {
+                                int w = Console.WindowWidth;
+                                if (w > 0)
+                                    return w;
+                            }
                         }
-                    }
-                    catch
-                    {
-                        // No attached console (piped under the launcher or run
-                        // as a service): fall through to a sensible default.
-                    }
+                        catch
+                        {
+                            // No attached console (piped under the launcher or run
+                            // as a service): fall through to a sensible default.
+                        }
 
-                    // Redirected/headless: the width is genuinely unknowable here.
-                    // `docker logs` renders in a terminal on someone else's machine,
-                    // and nothing about it reaches this process. Wrapping to a guess
-                    // buys hanging continuation lines at the price of folding every
-                    // line at 120 columns in a terminal twice that wide, which is
-                    // what container logs actually looked like. 0 leaves the lines
-                    // whole; the reader's terminal is the only thing that knows.
-                    // COLUMNS still wins when it is set deliberately.
-                    return
-                        int.TryParse(Environment.GetEnvironmentVariable("COLUMNS"), out int cols)
-                        && cols > 0
-                        ? cols
-                        : 0;
-                },
-            }
+                        // Redirected/headless: the width is genuinely unknowable here.
+                        // `docker logs` renders in a terminal on someone else's machine,
+                        // and nothing about it reaches this process. Wrapping to a guess
+                        // buys hanging continuation lines at the price of folding every
+                        // line at 120 columns in a terminal twice that wide, which is
+                        // what container logs actually looked like. 0 leaves the lines
+                        // whole; the reader's terminal is the only thing that knows.
+                        // COLUMNS still wins when it is set deliberately.
+                        return
+                            int.TryParse(
+                                Environment.GetEnvironmentVariable("COLUMNS"),
+                                out int cols
+                            )
+                            && cols > 0
+                            ? cols
+                            : 0;
+                    },
+                }
+            )
         );
         builder.Services.AddSingleton<NmSystem.Logging.NoMercyLoggerProvider>();
         builder.Services.AddSingleton(typeof(ILogger<>), typeof(CustomLogger<>));

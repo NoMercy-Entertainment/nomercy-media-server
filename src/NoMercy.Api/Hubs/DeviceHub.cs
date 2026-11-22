@@ -182,8 +182,21 @@ public sealed class DeviceHub : ConnectionHub
                 device.Id,
                 new { type = wakeType, session_id = Guid.NewGuid().ToString() }
             );
+            _logger.Log(
+                sent ? LogLevel.Information : LogLevel.Warning,
+                "Wake {WakeType} device={DeviceId} via device bus: {Result}",
+                wakeType,
+                deviceId,
+                sent ? "frame sent" : "no route, frame not sent"
+            );
             return HubCommandResult.FromWakeStatus(sent ? "wake_sent" : "no_route");
         }
+
+        _logger.LogInformation(
+            "Wake {WakeType} device={DeviceId} is off the device bus, requesting a server-side Cast launch",
+            wakeType,
+            deviceId
+        );
 
         // Off the bus: the server does the Cast wake itself rather than handing the
         // job back to whichever client happened to ask. `cast_fallback` made the

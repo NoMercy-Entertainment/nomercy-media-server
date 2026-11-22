@@ -12,12 +12,18 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using NoMercy.Networking.Http;
+using NoMercy.NmSystem.Logging;
 
 namespace NoMercy.Networking.Messaging;
 
-public class ClientMessenger(ConnectedClients connectedClients, ILogger<ClientMessenger> logger)
-    : IClientMessenger
+public class ClientMessenger(
+    ConnectedClients connectedClients,
+    ILogger<ClientMessenger> logger,
+    SessionLogPolicy? policy = null
+) : IClientMessenger
 {
+    private readonly SessionLogPolicy _sessionLogPolicy = policy ?? new();
+
     // Bounds how long one connection's send can hold up the overall SendTo/SendToAll
     // call. Sequentially awaiting each connection in turn meant one slow or half-dead
     // socket (backgrounded app, half-open TCP connection with no RST yet) delayed
@@ -73,9 +79,13 @@ public class ClientMessenger(ConnectedClients connectedClients, ILogger<ClientMe
             endpoint
         );
 
-        logger.LogDebug(
-            "SendTo({Name}, {Endpoint}, {UserId}): {Count} target connection(s)",
-            [name, endpoint, userId, targets.Count]
+        logger.Log(
+            _sessionLogPolicy.BroadcastLevel(name, userId),
+            "Broadcast {Name} on {Endpoint} user={UserId} target: {Count} connection(s)",
+            name,
+            endpoint,
+            userId,
+            targets.Count
         );
 
         await Task.WhenAll(
@@ -110,7 +120,7 @@ public class ClientMessenger(ConnectedClients connectedClients, ILogger<ClientMe
         }
         catch (Exception ex)
         {
-            logger.LogDebug(
+            logger.LogWarning(
                 "Send {Name} to connection {ConnectionId} (device {DeviceId}) failed after {ElapsedMilliseconds}ms: {Message}",
                 [name, connectionId, client.DeviceId, stopwatch.ElapsedMilliseconds, ex.Message]
             );

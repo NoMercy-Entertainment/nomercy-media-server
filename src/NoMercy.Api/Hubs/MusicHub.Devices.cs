@@ -80,6 +80,14 @@ public partial class MusicHub
     /// </summary>
     private void SetActiveDevice(User user, MusicPlayerState state, Device device)
     {
+        if (!string.Equals(state.DeviceId, device.DeviceId, StringComparison.Ordinal))
+            _logger.LogInformation(
+                "Active music device changed user={User} from={From} to={To}",
+                user.Id,
+                state.DeviceId,
+                device.DeviceId
+            );
+
         state.DeviceId = device.DeviceId;
         _activeDeviceRegistry.Set(user.Id, device);
     }

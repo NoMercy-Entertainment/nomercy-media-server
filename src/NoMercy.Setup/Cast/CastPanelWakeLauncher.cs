@@ -53,7 +53,7 @@ public class CastPanelWakeLauncher(
     /// see the follow-up block below for why the first LAUNCH can't just
     /// claim the APK is there.
     /// </summary>
-    public async Task LaunchIfColdAsync(
+    public async Task<CastLaunchOutcome> LaunchIfColdAsync(
         bool targetIsLive,
         string? targetIp,
         bool useAndroidReceiver,
@@ -62,15 +62,15 @@ public class CastPanelWakeLauncher(
     )
     {
         if (!ShouldFireCastWake(targetIsLive))
-            return;
+            return CastLaunchOutcome.SkippedLive;
 
-        // A TV that only ever reached the server from outside has no address on this
-        // network recorded, and a Cast LAUNCH has nowhere to go. That is a missing mDNS
-        // sighting, not a failure worth a warning — the handoff itself still proceeds.
+        // The handoff itself still proceeds without an address; the launch is what is lost.
         if (targetIp is null)
         {
-            logger.LogDebug("No LAN address recorded for the target TV — skipping panel wake");
-            return;
+            logger.LogWarning(
+                "Cast launch skipped: no LAN address recorded for the target TV, so it is not woken"
+            );
+            return CastLaunchOutcome.NoAddress;
         }
 
         try
@@ -82,8 +82,15 @@ public class CastPanelWakeLauncher(
                     "No Chromecast receiver discovered at {TargetIp} — panel won't wake via CEC",
                     targetIp
                 );
-                return;
+                return CastLaunchOutcome.NoReceiver;
             }
+
+            logger.LogInformation(
+                "Cast launch requested at {TargetIp} (receiver {Receiver}) transport: {Transport}",
+                targetIp,
+                receiverName,
+                useAndroidReceiver ? "cast connect app" : "web receiver"
+            );
 
             LaunchCustomData? launchData = await resolveLaunchData();
             if (launchData is null)
@@ -131,15 +138,32 @@ public class CastPanelWakeLauncher(
                         useAndroidReceiver: true
                     );
                 }
+                else
+                {
+                    logger.LogWarning(
+                        "Cast launch follow-up skipped: {TargetIp} never came online on the device bus",
+                        targetIp
+                    );
+                }
             }
+
+            logger.LogInformation(
+                "Cast launch result: launched at {TargetIp} (receiver {Receiver})",
+                targetIp,
+                receiverName
+            );
+            return CastLaunchOutcome.Launched;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(
-                "Server-side Cast launch failed for {TargetIp}: {Message}",
+            logger.LogError(
+                ex,
+                "Cast launch result: failed for {TargetIp} exception={Exception}: {Message}",
                 targetIp,
+                ex.GetType().Name,
                 ex.Message
             );
+            return CastLaunchOutcome.Failed;
         }
     }
 
