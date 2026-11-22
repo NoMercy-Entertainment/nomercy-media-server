@@ -1,0 +1,58 @@
+#!/bin/bash
+# Installer postinstall for the NoMercy MediaServer pkg (issue #661).
+#
+# The component payloads are built with the default system paths
+# (/Applications/NoMercy MediaServer.app). When a user installs into the home
+# folder, the app lands in ~/Applications instead. This script finds the app
+# where it really is and points the LaunchAgent and the CLI link at it.
+# It changes nothing for a normal system install.
+#
+# Installer arguments: $1 package path, $2 install destination, $3 volume.
+# Test overrides: NM_HOME (the user home folder), NM_SYSTEM_ROOT (the system root).
+set -uo pipefail
+
+APP_NAME="NoMercy MediaServer.app"
+DEFAULT_APP="/Applications/${APP_NAME}"
+PLIST_NAME="tv.nomercy.mediaserver.service.plist"
+
+TARGET="${2:-/}"
+TARGET="${TARGET%/}"
+USER_HOME="${NM_HOME:-${HOME:-}}"
+USER_HOME="${USER_HOME%/}"
+SYSTEM_ROOT="${NM_SYSTEM_ROOT:-}"
+SYSTEM_ROOT="${SYSTEM_ROOT%/}"
+
+# Find the installed app: the destination first, then the user folder, then the system folder.
+APP=""
+for base in "${TARGET}" "${USER_HOME}" "${SYSTEM_ROOT}"; do
+    if [[ -d "${base}/Applications/${APP_NAME}" ]]; then
+        APP="${base}/Applications/${APP_NAME}"
+        break
+    fi
+done
+
+# Nothing found, or already at the default place: nothing to fix.
+if [[ -z "$APP" || "$APP" == "${SYSTEM_ROOT}${DEFAULT_APP}" ]]; then
+    exit 0
+fi
+
+# Escape the path for XML text.
+APP_XML="${APP//&/&amp;}"
+APP_XML="${APP_XML//</&lt;}"
+APP_XML="${APP_XML//>/&gt;}"
+
+for base in "${TARGET}" "${USER_HOME}"; do
+    plist="${base}/Library/LaunchAgents/${PLIST_NAME}"
+    if [[ -f "$plist" ]]; then
+        content="$(cat "$plist")"
+        printf '%s\n' "${content//"$DEFAULT_APP"/"$APP_XML"}" > "$plist"
+    fi
+
+    link="${base}/usr/local/bin/nomercy"
+    if [[ -L "$link" ]]; then
+        rm -f "$link"
+        ln -s "${APP}/Contents/MacOS/nomercy" "$link"
+    fi
+done
+
+exit 0
