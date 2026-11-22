@@ -1,9 +1,18 @@
 #!/bin/sh
 set -e
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user stop nomercymediaserver.service >/dev/null 2>&1 || true
-    systemctl --user disable nomercymediaserver.service >/dev/null 2>&1 || true
-    systemctl --user stop nomercylauncher.service >/dev/null 2>&1 || true
-    systemctl --user disable nomercylauncher.service >/dev/null 2>&1 || true
-fi
+# An upgrade keeps the autostart setting and the postinst of the new version
+# restarts a running server. Only a removal stops and disables the units.
+# dpkg runs this as root, so each user's manager is addressed by name.
+case "$1" in
+    remove|deconfigure)
+        if command -v systemctl >/dev/null 2>&1 && command -v loginctl >/dev/null 2>&1; then
+            for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+                for unit in nomercymediaserver.service nomercylauncher.service; do
+                    systemctl --user --machine="${user}@" stop "$unit" >/dev/null 2>&1 || true
+                    systemctl --user --machine="${user}@" disable "$unit" >/dev/null 2>&1 || true
+                done
+            done
+        fi
+        ;;
+esac
 exit 0
