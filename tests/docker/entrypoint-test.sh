@@ -36,4 +36,15 @@ grep -x 'owner=1000' <<<"$out" >/dev/null  || { echo "FAIL: old files were not h
 # A user who already runs with --user keeps working without root.
 out2="$(docker run --rm --user 1000:1000 -v "$vol:/data" "$tag" sh -c 'echo "who=$(id -u)"')"
 grep -x 'who=1000' <<<"$out2" >/dev/null || { echo "FAIL: --user 1000 start broke"; exit 1; }
+# A media folder mounted below /data is the user's own: its files keep their owner.
+media="nm-entrypoint-test-media-$$"
+trap 'docker volume rm -f "$media" >/dev/null 2>&1 || true; cleanup' EXIT
+docker run --rm --entrypoint sh -v "$vol:/data" -v "$media:/data/media" "$tag" -c \
+  'echo m > /data/media/movie.mkv && chown 0:0 /data/media/movie.mkv && echo y > /data/old && chown 0:0 /data/old'
+out3="$(docker run --rm -v "$vol:/data" -v "$media:/data/media" "$tag" sh -c \
+  'echo "old=$(stat -c %u /data/old)"; echo "media=$(stat -c %u /data/media/movie.mkv)"')"
+echo "$out3"
+grep -x 'old=1000' <<<"$out3" >/dev/null || { echo "FAIL: old file on the data volume was not handed over"; exit 1; }
+grep -x 'media=0' <<<"$out3" >/dev/null  || { echo "FAIL: a file on a volume mounted below /data changed owner"; exit 1; }
+
 echo "PASS: entrypoint migrates a root-owned volume and drops to nomercy"
