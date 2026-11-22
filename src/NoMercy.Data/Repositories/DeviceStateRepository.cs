@@ -29,12 +29,17 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
             .FirstOrDefaultAsync();
     }
 
+    /// <summary>A listed device still has its fingerprint; <see cref="Retire"/> clears it.</summary>
+    public static readonly Expression<Func<Device, bool>> IsListed = device =>
+        device.Fingerprint != null;
+
     public async Task<List<Device>> GetListedDevicesAsync(Guid ownerUserId)
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync();
         return await context
             .Devices.AsNoTracking()
-            .Where(device => device.OwnerUserId == ownerUserId && device.Fingerprint != null)
+            .Where(device => device.OwnerUserId == ownerUserId)
+            .Where(IsListed)
             .ToListAsync();
     }
 
