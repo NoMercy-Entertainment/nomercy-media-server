@@ -697,6 +697,97 @@ public class PluginDeclaredAccessTests
     }
 
     [Fact]
+    public async Task Post_member_cannot_run_an_owner_type_by_changing_its_case()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ =>
+            new()
+            {
+                Components =
+                [
+                    new()
+                    {
+                        Id = "lower",
+                        Component = "NMButton",
+                        Action = Intent("submitform", "lower-form", PluginRouteAccess.Shared),
+                    },
+                    new()
+                    {
+                        Id = "upper",
+                        Component = "NMButton",
+                        Action = Intent("submitForm", "upper-form", PluginRouteAccess.Owner),
+                    },
+                ],
+            }
+        );
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await Post(member, "submitform");
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Post_member_with_values_and_no_action_is_refused_when_the_view_holds_any_owner_action()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ => ActionsView(PluginRouteAccess.Owner));
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await PostValues(member, null);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Post_member_with_values_and_no_action_passes_when_every_action_is_shared()
+    {
+        Mock<IUiPlugin> plugin = Plugin(view: _ => ActionsView(PluginRouteAccess.Shared));
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await PostValues(member, null);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Theory]
+    [InlineData("//admin")]
+    [InlineData("admin")]
+    [InlineData("/admin?x=1")]
+    [InlineData("/ADMIN/")]
+    public async Task Page_member_is_refused_an_owner_nav_route_in_any_spelling(string route)
+    {
+        Mock<IUiPlugin> plugin = Plugin(nav: AdminOwnerNav);
+        PluginUiController member = Controller(plugin.Object, User(MemberId));
+
+        IActionResult result = await member.View(PluginId, route, null, default);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+    }
+
+    [Theory]
+    [InlineData("//admin")]
+    [InlineData("admin")]
+    [InlineData("/admin?x=1")]
+    public async Task Page_owner_still_opens_an_owner_nav_route_in_any_spelling(string route)
+    {
+        PluginUiController owner = Controller(Plugin(nav: AdminOwnerNav).Object, User(OwnerId));
+
+        IActionResult result = await owner.View(PluginId, route, null, default);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    private static readonly IReadOnlyList<PluginNavEntry> AdminOwnerNav =
+    [
+        new()
+        {
+            Section = PluginKind.Dashboard,
+            Label = "admin",
+            Route = "/admin",
+            Access = PluginRouteAccess.Owner,
+        },
+    ];
+
+    [Fact]
     public async Task Post_member_can_run_a_type_whose_actions_are_all_shared()
     {
         Mock<IUiPlugin> plugin = Plugin(view: _ => TwoFormsView(PluginRouteAccess.Shared));

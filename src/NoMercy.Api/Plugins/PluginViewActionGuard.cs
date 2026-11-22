@@ -62,12 +62,11 @@ public static class PluginViewActionGuard
         return ofType.Count > 0 && !ofType.Any(IsOwnerOnly);
     }
 
-    /// <summary>Whether a view holds an owner-only action of this type.</summary>
-    public static bool HoldsOwnerAction(JToken view, string type) =>
-        Actions(view).Any(action => IsOwnerOnly(action) && IsType(action, type));
+    /// <summary>Whether the view holds any owner-only action.</summary>
+    public static bool HoldsAnyOwnerAction(JToken view) => Actions(view).Any(IsOwnerOnly);
 
     private static bool IsType(JObject action, string type) =>
-        string.Equals(Text(action, "type"), type, StringComparison.Ordinal);
+        string.Equals(Text(action, "type"), type, StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<JObject> Actions(JToken root) =>
         root.SelectTokens("$..*")

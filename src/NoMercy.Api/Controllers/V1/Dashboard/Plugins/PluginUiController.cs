@@ -424,12 +424,12 @@ public class PluginUiController(
     private static bool NamesOwnerNavEntry(IUiPlugin plugin, string route) =>
         plugin.NavEntries?.Any(entry =>
             entry.Access == PluginRouteAccess.Owner
-            && string.Equals(
-                entry.Route.TrimEnd('/'),
-                route.TrimEnd('/'),
-                StringComparison.OrdinalIgnoreCase
-            )
+            && Segments(entry.Route)
+                .SequenceEqual(Segments(route), StringComparer.OrdinalIgnoreCase)
         ) == true;
+
+    private static string[] Segments(string route) =>
+        route.Split('?')[0].Split('/', StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Whether a non-owner may post this: a type an owner action shares cannot be told apart, so it is refused.</summary>
     private async Task<bool> MayPost(
@@ -461,7 +461,7 @@ public class PluginUiController(
 
             return hasAction
                 ? PluginViewActionGuard.OffersOnlySharedAction(offered, input.Action!)
-                : !PluginViewActionGuard.HoldsOwnerAction(offered, "submitForm");
+                : !PluginViewActionGuard.HoldsAnyOwnerAction(offered);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
