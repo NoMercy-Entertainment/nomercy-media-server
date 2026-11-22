@@ -24,6 +24,9 @@ public sealed record HubCommandResult(
 {
     public static HubCommandResult Success() => new(true, null, null);
 
+    public static HubCommandResult NoPlaybackMoved() =>
+        new(true, null, "The device is selected. No playback was moved.", "no_playback_moved");
+
     public static HubCommandResult Invalid(string message) => new(false, "invalid_input", message);
 
     public static HubCommandResult NotFound(string message) => new(false, "not_found", message);

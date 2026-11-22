@@ -29,6 +29,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Cast;
 using NoMercy.Networking.Discovery;
 using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;
@@ -183,7 +184,9 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
         string connectionId,
         Guid userId,
         out Mock<IHubCallerClients> clients,
-        IActivityLogger? activityLogger = null
+        IActivityLogger? activityLogger = null,
+        CastPanelWakeLauncher? castPanelWakeLauncher = null,
+        DeviceBusRegistry? busRegistry = null
     )
     {
         IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
@@ -214,8 +217,8 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<VideoPlaybackCommandHandler>(),
             activityLogger ?? Mock.Of<IActivityLogger>(),
             _factory.Services.GetRequiredService<CastSessionTokenService>(),
-            _factory.Services.GetRequiredService<DeviceBusRegistry>(),
-            _factory.Services.GetRequiredService<CastPanelWakeLauncher>(),
+            busRegistry ?? _factory.Services.GetRequiredService<DeviceBusRegistry>(),
+            castPanelWakeLauncher ?? _factory.Services.GetRequiredService<CastPanelWakeLauncher>(),
             userDataRepository.Object,
             new VideoFileRepository(contextFactory),
             null as INetworkDiscovery
@@ -768,6 +771,218 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
         finally
         {
             connectedClients.Clients.TryRemove(targetConnectionId, out _);
+            stateManager.RemoveState(userId);
+        }
+    }
+
+    private const string TvIp = "192.168.1.50";
+
+    private (DeviceBusRegistry Registry, Device Tv) RegistryWithSleepingTv(Guid userId)
+    {
+        Device tv = new()
+        {
+            Id = Ulid.NewUlid(),
+            DeviceId = $"tv-{Guid.NewGuid()}",
+            Name = "Test Room TV",
+            Type = "tv",
+            LanIp = TvIp,
+            Fingerprint = Guid.NewGuid().ToString(),
+            OwnerUserId = userId,
+        };
+        Mock<IDeviceStateRepository> repository = new();
+        repository.Setup(r => r.GetOwnedTvsAsync(userId)).ReturnsAsync([tv]);
+        DeviceBusRegistry registry = new(
+            repository.Object,
+            Mock.Of<IHubContext<DeviceHub>>(),
+            Mock.Of<ICastMdnsRegistry>()
+        );
+        return (registry, tv);
+    }
+
+    private static CastPanelWakeLauncher LauncherWith(Mock<IChromeCastService> chromeCast) =>
+        new(chromeCast.Object, NullLogger<CastPanelWakeLauncher>.Instance);
+
+    [Fact]
+    public async Task ChangeDeviceCommand_TvWithNoReceiverAtItsAddress_AnswersNotOk()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        stateManager.UpdateState(userId, new VideoPlayerState { PlayState = false });
+        (DeviceBusRegistry registry, Device tv) = RegistryWithSleepingTv(userId);
+        Mock<IChromeCastService> chromeCast = new();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TvIp)).ReturnsAsync((string?)null);
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(
+                Guid.NewGuid().ToString(),
+                userId,
+                out _,
+                castPanelWakeLauncher: LauncherWith(chromeCast),
+                busRegistry: registry
+            );
+
+            HubCommandResult result = await hub.ChangeDeviceCommand(tv.DeviceId);
+
+            result.Ok.Should().BeFalse();
+            result.Status.Should().Be("no_route");
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangeDeviceCommand_TvLaunchThrows_AnswersNotOk()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        stateManager.UpdateState(userId, new VideoPlayerState { PlayState = false });
+        (DeviceBusRegistry registry, Device tv) = RegistryWithSleepingTv(userId);
+        Mock<IChromeCastService> chromeCast = new();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TvIp)).ReturnsAsync("Test Room TV");
+        chromeCast
+            .Setup(c => c.SelectChromecast("Test Room TV"))
+            .ThrowsAsync(new InvalidOperationException("receiver refused"));
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(
+                Guid.NewGuid().ToString(),
+                userId,
+                out _,
+                castPanelWakeLauncher: LauncherWith(chromeCast),
+                busRegistry: registry
+            );
+
+            HubCommandResult result = await hub.ChangeDeviceCommand(tv.DeviceId);
+
+            result.Ok.Should().BeFalse();
+            result.Status.Should().Be("no_route");
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangeDeviceCommand_TvLaunched_AnswersOk()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        VideoPlayerState state = new() { PlayState = false };
+        stateManager.UpdateState(userId, state);
+        (DeviceBusRegistry registry, Device tv) = RegistryWithSleepingTv(userId);
+        Mock<IChromeCastService> chromeCast = new();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TvIp)).ReturnsAsync("Test Room TV");
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(
+                Guid.NewGuid().ToString(),
+                userId,
+                out _,
+                castPanelWakeLauncher: LauncherWith(chromeCast),
+                busRegistry: registry
+            );
+
+            HubCommandResult result = await hub.ChangeDeviceCommand(tv.DeviceId);
+
+            result.Ok.Should().BeTrue();
+            state.DeviceId.Should().Be(tv.DeviceId);
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangeDeviceCommand_NoPlaybackState_SaysNoPlaybackWasMoved()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        string targetConnectionId = Guid.NewGuid().ToString();
+        string targetDeviceId = $"phone-{Guid.NewGuid()}";
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        stateManager.RemoveState(userId);
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        connectedClients.Clients[targetConnectionId] = new Client
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = targetDeviceId,
+            Endpoint = "/videoHub",
+            Type = "phone",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(Guid.NewGuid().ToString(), userId, out _);
+
+            HubCommandResult result = await hub.ChangeDeviceCommand(targetDeviceId);
+
+            result.Ok.Should().BeTrue();
+            result.Status.Should().Be("no_playback_moved");
+            result.Message.Should().Be("The device is selected. No playback was moved.");
+        }
+        finally
+        {
+            connectedClients.Clients.TryRemove(targetConnectionId, out _);
+            stateManager.RemoveState(userId);
+        }
+    }
+
+    [Fact]
+    public async Task StartPlaybackCommand_AfterDeviceChangeWithoutPlayback_PlaysOnTheChosenDevice()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        string targetConnectionId = Guid.NewGuid().ToString();
+        string callerConnectionId = Guid.NewGuid().ToString();
+        string targetDeviceId = $"phone-{Guid.NewGuid()}";
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        stateManager.RemoveState(userId);
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        connectedClients.Clients[targetConnectionId] = new Client
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = targetDeviceId,
+            Endpoint = "/videoHub",
+            Type = "phone",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+        connectedClients.Clients[callerConnectionId] = new Client
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = $"web-{Guid.NewGuid()}",
+            Endpoint = "/videoHub",
+            Type = "web",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(callerConnectionId, userId, out _);
+            await hub.ChangeDeviceCommand(targetDeviceId);
+
+            await hub.StartPlaybackCommand(MediaTypes.MovieMediaType, "129", 129);
+
+            stateManager.TryGetValue(userId, out VideoPlayerState? state).Should().BeTrue();
+            state!.DeviceId.Should().Be(targetDeviceId);
+        }
+        finally
+        {
+            connectedClients.Clients.TryRemove(targetConnectionId, out _);
+            connectedClients.Clients.TryRemove(callerConnectionId, out _);
             stateManager.RemoveState(userId);
         }
     }
