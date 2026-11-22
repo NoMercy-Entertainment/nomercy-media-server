@@ -11,9 +11,10 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy source and restore dependencies
-COPY NoMercy.Server.sln ./
+COPY NoMercy.Server.sln Directory.Build.props Directory.Packages.props nuget.config .editorconfig ./
 COPY src/ src/
 COPY assets/ assets/
+COPY libs/ libs/
 RUN dotnet restore src/NoMercy.Service/NoMercy.Service.csproj
 
 # Build and publish
