@@ -27,6 +27,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Tags("Dashboard Server Devices")]
 [ApiVersion(1.0)]
 [Authorize(Policy = "Moderator")]
+[ServiceFilter(typeof(NoMercy.Api.Filters.SessionRequestHttpLogFilter))]
 [Route("api/v{version:apiVersion}/dashboard/devices", Order = 10)]
 public class DevicesController(
     IDeviceRepository deviceRepository,

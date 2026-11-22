@@ -620,7 +620,7 @@ public partial class VideoHub
             : CastAddress.Resolve(targetTv.LanIp, targetTv.Ip);
 
         if (targetTv is not null && targetIp is null)
-            _logger.LogDebug(
+            _logger.LogWarning(
                 "No LAN address recorded for TV {DeviceId} — skipping panel wake",
                 deviceId
             );
@@ -656,10 +656,21 @@ public partial class VideoHub
 
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
         {
+            _logger.LogInformation(
+                "Active video device changed user={User} from={From} to={To}",
+                UserLogText.Of(user),
+                playerState.DeviceId,
+                deviceId
+            );
             playerState.DeviceId = deviceId;
         }
         else
         {
+            _logger.LogWarning(
+                "Video device change to {DeviceId} not applied: user={User} has no playback state, ChangeDevice was not sent",
+                deviceId,
+                UserLogText.Of(user)
+            );
             await _videoPlaybackService.UpdatePlaybackState(user, playerState);
             return;
         }

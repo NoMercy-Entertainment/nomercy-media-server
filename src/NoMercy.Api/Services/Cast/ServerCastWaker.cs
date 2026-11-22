@@ -80,7 +80,7 @@ public class ServerCastWaker(
         // here: a TV asleep with its app closed is off the bus, and that is the one
         // case Cast Connect exists for. This is a registered TV of ours, so the
         // native app is what should come up.
-        await launcher.LaunchIfColdAsync(
+        CastLaunchOutcome outcome = await launcher.LaunchIfColdAsync(
             targetIsLive: false,
             targetIp: targetIp,
             useAndroidReceiver: useAndroidReceiver,
@@ -95,6 +95,14 @@ public class ServerCastWaker(
                     clientLocale: locale
                 )
         );
+
+        if (outcome != CastLaunchOutcome.Launched)
+            logger.LogWarning(
+                "[ServerCastWaker] '{Name}' at {TargetIp}: the caller is told the wake was dispatched, but the launch outcome was {Outcome}",
+                tv.Name,
+                targetIp,
+                outcome
+            );
 
         return true;
     }

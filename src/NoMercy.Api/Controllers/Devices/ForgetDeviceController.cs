@@ -22,6 +22,7 @@ namespace NoMercy.Api.Controllers.Devices;
 [ApiController]
 [Authorize]
 [ApiVersion(1.0)]
+[ServiceFilter(typeof(NoMercy.Api.Filters.SessionRequestHttpLogFilter))]
 [Route("api/v{version:apiVersion}/devices/{deviceId}/forget")]
 public sealed class ForgetDeviceController : BaseController
 {
