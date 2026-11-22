@@ -1,0 +1,18 @@
+title = "NoMercy secret scan"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Published RFC 8291 Web Push test vectors"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''tests/NoMercy\.Tests\.Notifications/Push/rfc8291-example\.json$''']
+regexes = [
+  '''^q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94$''',
+  '''^BTBZMqHH6r4Tts7J_aSIgg$''',
+  '''^yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw$''',
+]
