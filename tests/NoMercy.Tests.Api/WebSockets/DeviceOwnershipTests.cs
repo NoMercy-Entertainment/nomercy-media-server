@@ -25,9 +25,9 @@ using Xunit;
 namespace NoMercy.Tests.Api.WebSockets;
 
 /// <summary>
-/// Cross-account isolation for the device bus: a device's ownership follows the
-/// account it is authenticated as, so it can never stay attached to (or surface
-/// on) the account that paired it first once it logs into another account.
+/// Cross-account isolation for the device bus: a device row stays with the account
+/// that paired it, and another account's hello with the same fingerprint cannot take
+/// it over until the owner forgets the device.
 /// </summary>
 public class DeviceOwnershipTests
 {
@@ -72,7 +72,36 @@ public class DeviceOwnershipTests
     }
 
     [Fact]
-    public async Task Device_transfersToNewAccount_andReportsPreviousOwner()
+    public async Task Device_forgottenByItsOwner_canBePairedByAnotherAccount()
+    {
+        await using MediaContext ctx = MakeContext();
+        Guid userA = Guid.NewGuid();
+        Guid userB = Guid.NewGuid();
+        Device old = new()
+        {
+            DeviceId = "fp-1",
+            Fingerprint = "fp-1",
+            OwnerUserId = userB,
+            Name = "TV",
+            Type = "tv",
+        };
+        ctx.Devices.Add(old);
+        await ctx.SaveChangesAsync();
+        await new DeviceRepository(ctx).DeleteDeviceAsync(old);
+
+        (Device? device, _) = await DeviceStateRepository.ResolveOwnedDeviceAsync(
+            ctx,
+            "fp-1",
+            userA,
+            "TV",
+            "tv"
+        );
+
+        device!.OwnerUserId.Should().Be(userA);
+    }
+
+    [Fact]
+    public async Task Device_ownedByAnotherAccount_isNotTakenOverByItsFingerprint()
     {
         await using MediaContext ctx = MakeContext();
         Guid userA = Guid.NewGuid();
@@ -97,10 +126,11 @@ public class DeviceOwnershipTests
             "tv"
         );
 
-        // ownership moved to the account the device is now logged into
-        device!.OwnerUserId.Should().Be(userA);
+        // a fingerprint alone does not pair: the row stays with the account that paired it
+        device.Should().BeNull();
         previousOwner.Should().Be(userB);
-        // the existing row was re-owned, not duplicated (DeviceId is unique)
+        (await ctx.Devices.SingleAsync(d => d.DeviceId == "fp-1")).OwnerUserId.Should().Be(userB);
+        // no second row appears (DeviceId is unique)
         (await ctx.Devices.CountAsync(d => d.DeviceId == "fp-1"))
             .Should()
             .Be(1);
