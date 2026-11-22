@@ -209,8 +209,9 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
     /// authenticated as — creating the row when it does not exist. Returns the
     /// device together with the previous owner (<see langword="null"/> for a brand
     /// new device) so the caller can refresh a prior owner's list on a transfer.
-    /// Ownership deliberately follows the session: a device logged into a new
-    /// account must stop surfacing on the account that paired it first.
+    /// A row owned by another account is never re-owned here: the device returns
+    /// <see langword="null"/> and the previous owner, and only its owner forgetting
+    /// the device frees the id for another account to pair.
     /// </summary>
     public static async Task<(Device? device, Guid? previousOwner)> ResolveOwnedDeviceAsync(
         MediaContext ctx,
@@ -247,6 +248,11 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
                 IsActive = true,
             };
             ctx.Devices.Add(device);
+        }
+        else if (previousOwner is { } owner && owner != userId)
+        {
+            // A fingerprint is not a pairing: the row stays with its owner until they forget it.
+            return (null, previousOwner);
         }
         else
         {
