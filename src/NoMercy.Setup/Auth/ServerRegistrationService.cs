@@ -101,6 +101,18 @@ public class ServerRegistrationService : IServerRegistrationService
 
     private async Task RunRegistrationAsync(int maxRetries)
     {
+        if (ServerRegistrationSwitch.IsSet)
+        {
+            // Register and assign both write this machine's shared device id on nomercy.tv.
+            // The certificate step reads by id and changes no registration, so it still runs.
+            Logger.Register(
+                $"{ServerRegistrationSwitch.VariableName} is set, not registering or assigning this server",
+                LogEventLevel.Warning
+            );
+            await _certificateService.RenewSslCertificate(_authTokenStore.AccessToken);
+            return;
+        }
+
         try
         {
             await RegisterServer(maxRetries);
@@ -241,6 +253,12 @@ public class ServerRegistrationService : IServerRegistrationService
 
     public async Task GetTunnelAvailability()
     {
+        if (ServerRegistrationSwitch.IsSet)
+        {
+            _connectivityStatus.TunnelAvailability = TunnelAvailability.NotProvisioned;
+            return;
+        }
+
         try
         {
             Dictionary<string, string> serverData = await GetServerInfo();
