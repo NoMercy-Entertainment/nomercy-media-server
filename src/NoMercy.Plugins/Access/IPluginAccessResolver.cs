@@ -17,6 +17,9 @@ namespace NoMercy.PluginSdk.Access;
 public interface IPluginAccessResolver
 {
     PluginAccess Resolve(Ulid pluginId, Guid userId);
+
+    /// <summary>Whether this account runs the server; the one owner the resolver compares with.</summary>
+    bool IsOwner(Guid userId) => false;
 }
 
 /// <summary>How a plugin got onto this server, which changes who may see it.</summary>

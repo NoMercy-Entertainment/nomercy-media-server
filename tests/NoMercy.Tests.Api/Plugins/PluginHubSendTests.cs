@@ -159,6 +159,7 @@ public class PluginHubSendTests
     {
         Mock<IPluginAccessResolver> resolver = new();
         resolver.Setup(r => r.Resolve(Plugin, Owner)).Returns(access);
+        resolver.Setup(r => r.IsOwner(Owner)).Returns(true);
 
         PluginHub hub = new(
             new Mock<IHttpContextAccessor>().Object,

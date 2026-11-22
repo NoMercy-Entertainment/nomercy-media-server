@@ -79,20 +79,41 @@ public class PluginControllerCapabilityFilter(
         if (info.Capabilities.RestAnonymous)
             return next();
 
-        if (
-            accessResolver.Resolve(pluginId, context.HttpContext.User.UserId()) == PluginAccess.None
-        )
-        {
-            context.Result = new ObjectResult(
-                new DataResponseDto<PluginRefusal> { Data = PluginAccessRefusal.For(pluginId) }
-            )
-            {
-                StatusCode = StatusCodes.Status403Forbidden,
-            };
+        PluginAccess granted = accessResolver.Resolve(pluginId, context.HttpContext.User.UserId());
 
-            return Task.CompletedTask;
-        }
+        if (granted == PluginAccess.None)
+            return Refuse(context, pluginId);
+
+        PluginCaller caller = PluginCallers.For(
+            context.HttpContext.User,
+            granted,
+            context.HttpContext.Request.Headers.AcceptLanguage.ToString(),
+            context.HttpContext.Request.Query["surface"].ToString(),
+            accessResolver
+        );
+
+        // The action's own attribute is listed after its controller's.
+        PluginRequiresAttribute? requires = context
+            .ActionDescriptor.EndpointMetadata.OfType<PluginRequiresAttribute>()
+            .LastOrDefault();
+
+        if (requires is not null && !caller.Admits(requires.Access))
+            return Refuse(context, pluginId);
+
+        context.HttpContext.Items[PluginControllerBase.CallerItemKey] = caller;
 
         return next();
+    }
+
+    private static Task Refuse(ActionExecutingContext context, Ulid pluginId)
+    {
+        context.Result = new ObjectResult(
+            new DataResponseDto<PluginRefusal> { Data = PluginAccessRefusal.For(pluginId) }
+        )
+        {
+            StatusCode = StatusCodes.Status403Forbidden,
+        };
+
+        return Task.CompletedTask;
     }
 }

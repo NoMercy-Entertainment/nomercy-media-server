@@ -11,8 +11,10 @@
 
 using System.Security.Claims;
 using FluentAssertions;
+using Moq;
 using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Plugins;
@@ -38,14 +40,22 @@ public class PluginCallersTests
             )
         );
 
+    private static IPluginAccessResolver Resolver(bool personIsOwner)
+    {
+        Mock<IPluginAccessResolver> resolver = new();
+        resolver.Setup(one => one.IsOwner(Person)).Returns(personIsOwner);
+        return resolver.Object;
+    }
+
     [Fact]
     public void The_owner_is_an_owner_with_the_access_and_language_given()
     {
         PluginCaller caller = PluginCallers.For(
-            User("owner"),
+            User("user"),
             PluginAccess.Owned,
             "nl-NL",
-            PluginSurface.Web
+            PluginSurface.Web,
+            Resolver(personIsOwner: true)
         );
 
         caller.Id.Should().Be(new UserId(new Ulid(Person)));
@@ -56,10 +66,10 @@ public class PluginCallersTests
     }
 
     [Fact]
-    public void Anybody_else_is_a_member()
+    public void Anybody_else_is_a_member_even_with_an_owner_role_claim()
     {
         PluginCallers
-            .For(User("user"), PluginAccess.Shared, null, null)
+            .For(User("owner"), PluginAccess.Shared, null, null, Resolver(personIsOwner: false))
             .Role.Should()
             .Be(PluginRole.Member);
     }
@@ -70,7 +80,7 @@ public class PluginCallersTests
     public void Without_a_language_the_caller_reads_english(string? language)
     {
         PluginCallers
-            .For(User("owner"), PluginAccess.Owned, language, null)
+            .For(User("owner"), PluginAccess.Owned, language, null, Resolver(personIsOwner: true))
             .Locale.Should()
             .Be("en");
     }
@@ -81,7 +91,7 @@ public class PluginCallersTests
     public void An_unknown_surface_falls_back_to_web(string? surface)
     {
         PluginCallers
-            .For(User("owner"), PluginAccess.Owned, null, surface)
+            .For(User("owner"), PluginAccess.Owned, null, surface, Resolver(personIsOwner: true))
             .Surface.Should()
             .Be(PluginSurface.Web);
     }

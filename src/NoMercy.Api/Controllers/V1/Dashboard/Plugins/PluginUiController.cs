@@ -13,7 +13,13 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.Plugins;
@@ -49,6 +55,26 @@ public class PluginUiController(
     /// </summary>
     private PluginAccess AccessTo(Ulid pluginId) => accessResolver.Resolve(pluginId, User.UserId());
 
+    private PluginCaller CallerFor(PluginAccess access, string? surface) =>
+        PluginCallers.For(
+            User,
+            access,
+            Request.Headers.AcceptLanguage.ToString(),
+            surface,
+            accessResolver
+        );
+
+    private JsonSerializerSettings JsonSettings() =>
+        HttpContext
+            .RequestServices?.GetService<IOptions<MvcNewtonsoftJsonOptions>>()
+            ?.Value.SerializerSettings
+        ?? new JsonSerializerSettings
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            Converters = [new StringEnumConverter()],
+        };
+
     /// <summary>
     /// Every plugin the caller's client should show in its navigation.
     /// </summary>
@@ -65,7 +91,7 @@ public class PluginUiController(
     /// the path already resolved. A plugin declaring none reports none, and its
     /// screens stay reachable through the wildcard.
     /// </summary>
-    private List<object> Pages(Ulid pluginId, string kind, string surface)
+    private List<object> Pages(Ulid pluginId, string kind, string surface, PluginCaller viewer)
     {
         if (pluginManager.GetPluginInstance(pluginId) is not IUiPlugin plugin)
             return [];
@@ -74,6 +100,7 @@ public class PluginUiController(
 
         return plugin
             .Routes.On(surface)
+            .Where(route => viewer.Admits(route.Access))
             .Select(
                 object (route) =>
                     new
@@ -92,6 +119,7 @@ public class PluginUiController(
     public IActionResult Browse([FromQuery] string? surface)
     {
         string asking = PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web;
+        PluginCaller viewer = CallerFor(PluginAccess.Shared, asking);
 
         var groups = pluginManager
             .GetInstalledPlugins()
@@ -101,8 +129,9 @@ public class PluginUiController(
                 WithoutStalePlugins(
                     info,
                     () =>
-                        (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)?.NavEntries.Select(
-                            entry => new
+                        (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)
+                            ?.NavEntries.Where(entry => viewer.Admits(entry.Access))
+                            .Select(entry => new
                             {
                                 PluginId = info.Id,
                                 PluginName = info.Name,
@@ -121,8 +150,7 @@ public class PluginUiController(
                                 // Offered here at all, which is a different question from
                                 // what it looks like once opened.
                                 AppearsHere = entry.AppearsOn(asking),
-                            }
-                        )
+                            })
                 ) ?? []
             )
             // A kind the server does not place is dropped rather than listed
@@ -153,7 +181,7 @@ public class PluginUiController(
                         // Every page the plugin declares, so a client registers a
                         // named route for each when a server is chosen rather than
                         // discovering them one navigation at a time.
-                        Pages = Pages(entry.PluginId, entry.Kind, asking),
+                        Pages = Pages(entry.PluginId, entry.Kind, asking, viewer),
                     })
                     .OrderBy(entry => entry.PluginName)
                     .ToList(),
@@ -166,6 +194,9 @@ public class PluginUiController(
     [HttpGet("api/v{version:apiVersion}/plugins/ui")]
     public IActionResult Discover()
     {
+        bool seesOwnerEntries = CallerFor(PluginAccess.Shared, null)
+            .Admits(PluginRouteAccess.Owner);
+
         List<PluginUiDescriptorDto> descriptors = pluginManager
             .GetInstalledPlugins()
             .Where(HasUi)
@@ -183,6 +214,14 @@ public class PluginUiController(
                 )
             )
             .OfType<PluginUiDescriptorDto>()
+            .Select(descriptor =>
+                descriptor with
+                {
+                    NavEntries = descriptor
+                        .NavEntries.Where(entry => seesOwnerEntries || entry.Access != "owner")
+                        .ToList(),
+                }
+            )
             .ToList();
 
         return Ok(new DataResponseDto<IEnumerable<PluginUiDescriptorDto>> { Data = descriptors });
@@ -266,18 +305,22 @@ public class PluginUiController(
         if (pluginManager.GetPluginInstance(id) is not IUiPlugin plugin)
             return NotFoundResponse("Plugin provides no UI");
 
+        PluginCaller caller = CallerFor(access, surface);
+        bool isOwner = caller.Admits(PluginRouteAccess.Owner);
+        string asked = string.IsNullOrWhiteSpace(route) ? "/" : route;
+
+        PluginRouteMatch? declared = plugin.Routes.Resolve(asked);
+
+        if (declared is not null && !caller.Admits(declared.Route.Access))
+            return ForbiddenResponse(PluginAccessRefusal.For(id));
+
         PluginViewRequest request = new()
         {
-            Route = string.IsNullOrWhiteSpace(route) ? "/" : route,
+            Route = asked,
             Query = Request
                 .Query.Where(entry => entry.Key != "route" && entry.Key != "surface")
                 .ToDictionary(entry => entry.Key, entry => entry.Value.ToString()),
-            Caller = PluginCallers.For(
-                User,
-                access,
-                Request.Headers.AcceptLanguage.ToString(),
-                surface
-            ),
+            Caller = caller,
             // An unknown surface falls back rather than being passed through. A
             // plugin branching on it would hit its own default and serve the
             // desktop shape to a television, which looks like a plugin bug.
@@ -291,6 +334,13 @@ public class PluginUiController(
             // than one read from configuration.
             Origin = $"{Request.Scheme}://{Request.Host}",
         };
+
+        if (
+            !isOwner
+            && input?.Action is { Length: > 0 } posted
+            && !await HoldsSharedAction(plugin, request, posted, ct)
+        )
+            return ForbiddenResponse(PluginAccessRefusal.For(id));
 
         try
         {
@@ -335,10 +385,11 @@ public class PluginUiController(
             // A declared route names the shell its page wants, and the plugin
             // should not have to repeat it on every view it builds. A view that
             // named one itself keeps it.
-            PluginRouteMatch? declared = plugin.Routes.Resolve(request.Route);
-
             if (declared is not null && view.Layout == PluginLayout.Standard)
                 view.Layout = declared.Route.LayoutFor(request.Surface);
+
+            if (!isOwner && PluginViewActionGuard.Strip(view, JsonSettings(), out JToken stripped))
+                return Ok(new DataResponseDto<JToken> { Data = stripped });
 
             return Ok(new DataResponseDto<PluginView> { Data = view });
         }
@@ -367,6 +418,43 @@ public class PluginUiController(
             // empty panel rather than a 500 the user reads as the server
             // breaking.
             return BadRequestResponse($"Plugin could not render this view: {exception.Message}");
+        }
+    }
+
+    /// <summary>Whether the route, rendered for this caller without the action, offers it.</summary>
+    private async Task<bool> HoldsSharedAction(
+        IUiPlugin plugin,
+        PluginViewRequest request,
+        string action,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            PluginView view = await plugin.GetViewAsync(
+                new()
+                {
+                    Route = request.Route,
+                    Query = request.Query,
+                    Caller = request.Caller,
+                    Surface = request.Surface,
+                    Origin = request.Origin,
+                },
+                ct
+            );
+
+            return PluginViewActionGuard.HoldsSharedAction(
+                PluginViewActionGuard.WithoutOwnerActions(view, JsonSettings()),
+                action
+            );
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 

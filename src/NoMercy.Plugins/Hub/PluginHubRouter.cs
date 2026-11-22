@@ -61,6 +61,13 @@ public class PluginHubRouter(Func<IPluginManager> pluginManager, ILogger<PluginH
         if (info.Capabilities?.Ws != true)
             return false;
 
+        if (
+            message.Caller is { } caller
+            && delegateHandler?.AccessFor(message.Method) is { } required
+            && !caller.Admits(required)
+        )
+            return false;
+
         try
         {
             if (handler is not null)

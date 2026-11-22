@@ -34,10 +34,16 @@ public class PluginHubBroadcaster(
     public void Handle(
         string method,
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    ) => HandleWithAccess(method, PluginRouteAccess.Shared, handler);
+
+    public void HandleWithAccess(
+        string method,
+        PluginRouteAccess access,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
     )
     {
         PluginDelegateHubHandler delegateHandler = router.DelegateHandlerFor(pluginId);
-        delegateHandler.Register(method, handler);
+        delegateHandler.Register(method, access, handler);
     }
 
     public Task PushAsync(string type, object? payload) =>

@@ -101,12 +101,18 @@ internal sealed class RemoteHub(RemoteCall call) : IPluginHubContext
     public void Handle(
         string method,
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    ) => HandleWithAccess(method, PluginRouteAccess.Shared, handler);
+
+    public void HandleWithAccess(
+        string method,
+        PluginRouteAccess access,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
     )
     {
         lock (_handlers)
             _handlers[method] = handler;
 
-        call.Tell("hub", nameof(Handle), new { method });
+        call.Tell("hub", nameof(Handle), new { method, access });
     }
 
     private readonly Dictionary<
