@@ -314,7 +314,8 @@ public class PluginUiController(
         if (declared is not null && !caller.Admits(declared.Route.Access))
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
-        if (declared is null && !isOwner && NamesOwnerNavEntry(plugin, asked))
+        // An owner-only nav entry wins over a shared route that also matches its path.
+        if (!isOwner && NamesOwnerNavEntry(plugin, asked))
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
         PluginViewRequest request = new()

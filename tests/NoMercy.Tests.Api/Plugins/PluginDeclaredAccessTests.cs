@@ -696,6 +696,49 @@ public class PluginDeclaredAccessTests
         );
     }
 
+    private static Mock<IUiPlugin> SharedParameterRoutePlugin() =>
+        Plugin(
+            new PluginRouteTable(
+                new PluginRoute
+                {
+                    Name = "page",
+                    Path = "/:page",
+                    Access = PluginRouteAccess.Shared,
+                }
+            ),
+            AdminOwnerNav
+        );
+
+    [Fact]
+    public async Task Page_member_is_refused_an_owner_nav_route_a_shared_parameter_route_also_matches()
+    {
+        PluginUiController member = Controller(SharedParameterRoutePlugin().Object, User(MemberId));
+
+        IActionResult result = await member.View(PluginId, "/admin", null, default);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Page_member_still_opens_other_pages_of_a_shared_parameter_route()
+    {
+        PluginUiController member = Controller(SharedParameterRoutePlugin().Object, User(MemberId));
+
+        IActionResult result = await member.View(PluginId, "/other", null, default);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task Page_owner_opens_an_owner_nav_route_a_shared_parameter_route_also_matches()
+    {
+        PluginUiController owner = Controller(SharedParameterRoutePlugin().Object, User(OwnerId));
+
+        IActionResult result = await owner.View(PluginId, "/admin", null, default);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
     [Fact]
     public async Task Post_member_cannot_run_an_owner_type_by_changing_its_case()
     {
