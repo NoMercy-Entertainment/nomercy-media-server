@@ -1,11 +1,24 @@
 name: 'Repair runner apt state'
 description: >-
-  Clears half-configured packages that make every apt call on the runner fail,
-  whatever it was asked to install. A no-op on an image that has none.
+  Clears the runner state that makes every apt call fail, whatever the job
+  asked to install: a repository that changed its release label, and
+  half-configured packages. A no-op on an image that has neither.
 
 runs:
   using: composite
   steps:
+    - name: Accept a changed repository label
+      shell: bash
+      run: |
+        # The runner image carries package sources our jobs never install from.
+        # When one of them changes its release label, a plain apt-get update
+        # stops with exit 100 ("changed its 'Label' value") and the job fails
+        # before it installs anything. On 2026-11-22 the ondrej/php PPA did
+        # this and stopped the deb and rpm jobs. Signatures are still checked.
+        # apt stores the accepted label, so the later plain update passes.
+        # The real fix is in the runner image; this keeps our own jobs running.
+        sudo apt-get update --allow-releaseinfo-change
+
     - name: Drop the half-configured spell-checker chain
       shell: bash
       run: |

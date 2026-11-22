@@ -71,7 +71,7 @@ public class PluginEntitlementGate(
         // Never softened by warn-only: nomercy.tv said this purchase is on hold.
         if (bundle.SuspendedFor(pluginId, ownerId, now) is not null)
             return new(
-                PluginRefusalCodes.EntitlementDormant,
+                PluginRefusalCodes.EntitlementSuspended,
                 pluginId.ToString(),
                 "The plugin is installed and not running.",
                 "The purchase of this plugin is paused on nomercy.tv, so this server may not run it for now.",

@@ -11,11 +11,13 @@
 
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Networking.Connectivity;
 using NoMercy.Networking.Discovery;
 using NoMercy.NmSystem.Auth;
+using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Status;
 using Xunit;
 
@@ -245,6 +247,68 @@ public sealed class NetworkChangeMonitorTests
         Exception? ex = await Record.ExceptionAsync(monitor.SendUpdate);
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task SendUpdate_WithSkipRegisterSwitch_NeverPostsEvenWithAToken()
+    {
+        string? previous = Environment.GetEnvironmentVariable(
+            ServerRegistrationSwitch.VariableName
+        );
+        string originalBase = ExternalServicesConfig.Current.ApiServerBaseUrl;
+        int requests = 0;
+        using HttpListener listener = new();
+        int port;
+        using (TcpListener probe = new(IPAddress.Loopback, 0))
+        {
+            probe.Start();
+            port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        }
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        Task serve = Task.Run(async () =>
+        {
+            try
+            {
+                while (true)
+                {
+                    HttpListenerContext context = await listener.GetContextAsync();
+                    Interlocked.Increment(ref requests);
+                    context.Response.StatusCode = 200;
+                    await using StreamWriter writer = new(context.Response.OutputStream);
+                    await writer.WriteAsync("{}");
+                    context.Response.Close();
+                }
+            }
+            catch (Exception)
+            {
+                // Listener stopped.
+            }
+        });
+
+        try
+        {
+            ExternalServicesConfig.Current.ApiServerBaseUrl = $"http://127.0.0.1:{port}/";
+            Environment.SetEnvironmentVariable(ServerRegistrationSwitch.VariableName, "true");
+            AuthTokenStore tokenStore = new();
+            tokenStore.SetAccessToken("test-token");
+            NetworkChangeMonitor monitor = BuildMonitor(
+                new RecordingNetworkDiscovery(),
+                new RecordingConnectivityManager(),
+                tokenStore
+            );
+
+            await monitor.SendUpdate();
+
+            Assert.Equal(0, requests);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ServerRegistrationSwitch.VariableName, previous);
+            ExternalServicesConfig.Current.ApiServerBaseUrl = originalBase;
+            listener.Stop();
+            await serve;
+        }
     }
 
     [Fact]

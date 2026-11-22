@@ -92,12 +92,22 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
     /// remains"). Without a token the order is plain priority, direct paths first, and the
     /// account-less quick tunnel stays the floor.
     /// </summary>
-    private IEnumerable<IConnectivityStrategy> OrderedStrategies() =>
-        string.IsNullOrEmpty(_connectivityStatus.CloudflareTunnelToken)
-            ? _strategies
-            : _strategies
+    private IEnumerable<IConnectivityStrategy> OrderedStrategies()
+    {
+        // A copy started with NOMERCY_SKIP_REGISTER never opens a tunnel: the address it
+        // would publish belongs to the first copy that shares its device id.
+        IEnumerable<IConnectivityStrategy> strategies = ServerRegistrationSwitch.IsSet
+            ? _strategies.Where(s =>
+                s.Type is not (ConnectivityType.CloudflareTunnel or ConnectivityType.QuickTunnel)
+            )
+            : _strategies;
+
+        return string.IsNullOrEmpty(_connectivityStatus.CloudflareTunnelToken)
+            ? strategies
+            : strategies
                 .OrderBy(s => s.Type is ConnectivityType.CloudflareTunnel ? 0 : 1)
                 .ThenBy(s => s.Priority);
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {

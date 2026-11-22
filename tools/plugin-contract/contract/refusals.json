@@ -318,6 +318,12 @@
     "summary": "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
   },
   {
+    "code": "PLUGIN_ENTITLEMENT_SUSPENDED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "nomercy.tv paused the purchase of this plugin, so the plugin is installed and not running until the purchase is active."
+  },
+  {
     "code": "PLUGIN_OFFLINE_BUNDLE_INVALID",
     "severity": "blocked",
     "capability": null,

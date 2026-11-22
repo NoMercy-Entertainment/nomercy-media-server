@@ -62,6 +62,12 @@ public class PushDispatchQueue(
             {
                 Logger.Notify($"Push dispatch to channel {request.Channel} timed out");
             }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Logger.Notify(
+                    $"Push dispatch to channel {request.Channel} failed: {exception.Message}"
+                );
+            }
         }
     }
 

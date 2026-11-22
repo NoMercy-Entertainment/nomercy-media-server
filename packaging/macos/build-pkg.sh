@@ -104,7 +104,11 @@ mkdir -p "${CLI_ROOT}/usr/local/bin"
 ln -s "/Applications/NoMercy MediaServer.app/Contents/MacOS/nomercy" \
    "${CLI_ROOT}/usr/local/bin/nomercy"
 
+# The CLI component installs last. Its postinstall points the LaunchAgent and the
+# CLI link at the folder the app really landed in (a user-folder install uses
+# ~/Applications, not /Applications).
 pkgbuild --root "${CLI_ROOT}" \
+    --scripts "${SCRIPT_DIR}/scripts" \
     --identifier tv.nomercy.cli \
     --version "${VERSION}" \
     --install-location "/" \

@@ -73,8 +73,8 @@ public record ArtistsResponseItemDto
         Description = album.Description;
         Id = album.Id;
         Name = album.Name;
-        Type = "artist";
-        Link = new($"/music/artists/{Id}", UriKind.Relative);
+        Type = "album";
+        Link = new($"/music/albums/{Id}", UriKind.Relative);
 
         Tracks = album.AlbumTrack.Select(albumTrack => albumTrack.Track).Count();
     }

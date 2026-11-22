@@ -206,8 +206,8 @@ public sealed class FfmpegEpisodeSignalProbe(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // OCR is optional: without it textured-background credits are missed,
-            // nothing is skipped early.
-            logger.LogInformation(
+            // nothing is skipped early. Still a warning: the operator must see why.
+            logger.LogWarning(
                 ex,
                 "Segment analysis: no OCR model ({Language}), OCR skipped",
                 OcrLanguage
@@ -281,9 +281,10 @@ public sealed class FfmpegEpisodeSignalProbe(
             if (!result.IsSuccess || !storage.Exists(dumpPath))
             {
                 logger.LogWarning(
-                    "Segment analysis: OCR failed for {Path} (exit {Exit})",
+                    "Segment analysis: OCR failed for {Path} (exit {Exit}): {Stderr}",
                     source.VideoPath,
-                    result.ExitCode
+                    result.ExitCode,
+                    result.StdErr
                 );
                 return null;
             }

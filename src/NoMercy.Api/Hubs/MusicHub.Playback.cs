@@ -581,7 +581,7 @@ public partial class MusicHub
             if (state.DeviceId == null)
                 if (ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? device))
                 {
-                    state.DeviceId = device.DeviceId;
+                    SetActiveDevice(user, state, device);
                     state.VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent;
                 }
 

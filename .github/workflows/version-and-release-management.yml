@@ -48,6 +48,10 @@ jobs:
         if: github.ref == 'refs/heads/dev'
         run: bash .github/scripts/has-release-changes.test.sh
 
+      - name: Test the changelog range
+        if: github.ref == 'refs/heads/dev'
+        run: bash .github/scripts/changelog-commits.test.sh
+
       - name: Check for source changes
         id: check-changes
         if: github.ref == 'refs/heads/dev'

@@ -183,7 +183,7 @@ public class ArtistsResponseItemDtoTests
     }
 
     [Fact]
-    public void AlbumCtor_SetsFieldsCorrectly_TypeIsArtist()
+    public void AlbumCtor_SetsFieldsCorrectly_TypeIsAlbumWithAlbumLink()
     {
         Album album = BuildAlbum();
         Guid albumId = album.Id;
@@ -194,8 +194,8 @@ public class ArtistsResponseItemDtoTests
         dto.Name.Should().Be("Test Album");
         dto.Disambiguation.Should().Be("Deluxe");
         dto.Description.Should().Be("Album description");
-        dto.Type.Should().Be("artist");
-        dto.Link.ToString().Should().Be($"/music/artists/{albumId}");
+        dto.Type.Should().Be("album");
+        dto.Link.ToString().Should().Be($"/music/albums/{albumId}");
     }
 
     private static ArtistCardDto BuildCard(
