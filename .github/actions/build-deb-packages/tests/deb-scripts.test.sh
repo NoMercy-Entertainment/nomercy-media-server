@@ -9,7 +9,7 @@ trap 'rm -rf "$tmp"' EXIT
 failures=0
 mkdir -p "$tmp/bin"
 
-printf '#!/bin/sh\necho "1000 alice"\necho "1001 bob"\n' > "$tmp/bin/loginctl"
+printf '#!/bin/sh\nif [ "$1" = list-users ]; then echo "1000 alice"; echo "1001 bob"; else echo "loginctl $*" >> "$STUB_LOG"; fi\n' > "$tmp/bin/loginctl"
 printf '#!/bin/sh\necho "$*" >> "$STUB_LOG"\n' > "$tmp/bin/systemctl"
 chmod +x "$tmp/bin/loginctl" "$tmp/bin/systemctl"
 
@@ -35,7 +35,14 @@ run postinst configure
 check "fresh install prints the exact next step" "$tmp/out" 'systemctl --user enable --now nomercymediaserver.service' present
 check "fresh install restarts nothing" "$tmp/calls" try-restart absent
 
+check "fresh install names the linger step" "$tmp/out" 'loginctl enable-linger' present
+check "fresh install without a sudo user enables no linger itself" "$tmp/calls" enable-linger absent
+
+SUDO_USER=carol run postinst configure
+check "fresh install via sudo keeps the server running after logout" "$tmp/calls" 'loginctl enable-linger carol' present
+
 run postinst configure 1.0.0
+check "upgrade does not change lingering" "$tmp/calls" enable-linger absent
 check "upgrade reloads units for alice" "$tmp/calls" '--user --machine=alice@ daemon-reload' present
 check "upgrade restarts a running server for alice" "$tmp/calls" '--user --machine=alice@ try-restart nomercymediaserver.service' present
 check "upgrade restarts a running server for bob" "$tmp/calls" '--user --machine=bob@ try-restart nomercymediaserver.service' present

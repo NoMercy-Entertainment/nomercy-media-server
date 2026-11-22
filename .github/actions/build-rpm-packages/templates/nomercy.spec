@@ -94,7 +94,12 @@ fi
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications || true
 fi
-systemctl --user daemon-reload >/dev/null 2>&1 || true
+# %post runs as root, so "systemctl --user" here would only reach root's own manager.
+# The server is a user unit: lingering keeps it running after logout and at boot.
+# On a first install, enable it for the person who ran the install (sudo sets SUDO_USER).
+if [ "$1" -eq 1 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ] && command -v loginctl >/dev/null 2>&1; then
+    loginctl enable-linger "$SUDO_USER" >/dev/null 2>&1 || true
+fi
 
 %preun
 if [ "$1" -eq 0 ] ; then
