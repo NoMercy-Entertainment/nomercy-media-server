@@ -116,22 +116,10 @@ public class PluginContext : IPluginContext
     public IPluginJobs? Jobs { get; }
 
     /// <summary>
-    /// Running ffmpeg over a track or a derived file, and splitting stems.
-    /// Null when the plugin never declared the <c>audioTools</c> hook.
+    /// Running ffmpeg over a track or a file of the plugin's own. Null when
+    /// the plugin never declared the <c>audioTools</c> hook.
     /// </summary>
     public IPluginAudioTools? AudioTools { get; }
-
-    /// <summary>
-    /// The server's own store of files derived from analysis. Null when the
-    /// plugin never declared the <c>derivedAudio</c> hook.
-    /// </summary>
-    public IPluginDerivedAudio? DerivedAudio { get; }
-
-    /// <summary>
-    /// Writing the DJ analysis record and the stem register. Null when the
-    /// plugin never declared the <c>musicAnalysisWrite</c> hook.
-    /// </summary>
-    public IPluginMusicAnalysisWriter? MusicAnalysisWriter { get; }
 
     /// <summary>
     /// Reading a track's lyrics state and writing generated timings. Null
@@ -167,8 +155,6 @@ public class PluginContext : IPluginContext
         IPluginJobs? jobs = null,
         IPluginMusicQuery? music = null,
         IPluginAudioTools? audioTools = null,
-        IPluginDerivedAudio? derivedAudio = null,
-        IPluginMusicAnalysisWriter? musicAnalysisWriter = null,
         IPluginMedia? media = null,
         IPluginLibraryImport? libraryImport = null,
         IPluginStorage? hostStorage = null,
@@ -191,8 +177,6 @@ public class PluginContext : IPluginContext
         Encoder = encoder;
         Jobs = jobs;
         AudioTools = audioTools;
-        DerivedAudio = derivedAudio;
-        MusicAnalysisWriter = musicAnalysisWriter;
         Lyrics = lyrics;
 
         PluginId = pluginId;

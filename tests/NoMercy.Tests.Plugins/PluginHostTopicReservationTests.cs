@@ -46,7 +46,7 @@ public sealed class PluginHostTopicReservationTests : IDisposable
     {
         SdkHostTopics()
             .Should()
-            .Contain([PluginTopics.MusicAnalysisCompleted, PluginTopics.LyricsRequested]);
+            .Contain([PluginTopics.MusicPlaybackStarted, PluginTopics.LyricsRequested]);
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public sealed class PluginHostTopicReservationTests : IDisposable
     [Fact]
     public async Task The_context_publish_shortcut_refuses_a_host_topic_too()
     {
-        using PluginEvents subscriber = Subscribed(PluginTopics.MusicAnalysisCompleted);
+        using PluginEvents subscriber = Subscribed(PluginTopics.LyricsRequested);
         Directory.CreateDirectory(_dataFolder);
         PluginContext context = TestPluginPlatform.Context(
             _bus,
@@ -95,7 +95,7 @@ public sealed class PluginHostTopicReservationTests : IDisposable
         );
 
         Func<Task> publish = () =>
-            context.PublishAsync(PluginTopics.MusicAnalysisCompleted, new TrackPayload("forged"));
+            context.PublishAsync(PluginTopics.LyricsRequested, new TrackPayload("forged"));
 
         await publish.Should().ThrowAsync<InvalidOperationException>();
         _received.Should().BeEmpty();
@@ -104,12 +104,12 @@ public sealed class PluginHostTopicReservationTests : IDisposable
     [Fact]
     public async Task A_host_topic_sent_under_a_plugin_id_is_not_delivered()
     {
-        using PluginEvents subscriber = Subscribed(PluginTopics.MusicAnalysisCompleted);
+        using PluginEvents subscriber = Subscribed(PluginTopics.LyricsRequested);
 
         await _bus.PublishAsync(
             PluginMessageEvent.From(
                 PublisherId,
-                PluginTopics.MusicAnalysisCompleted,
+                PluginTopics.LyricsRequested,
                 new TrackPayload("forged")
             )
         );
@@ -120,12 +120,12 @@ public sealed class PluginHostTopicReservationTests : IDisposable
     [Fact]
     public async Task A_host_publish_of_a_host_topic_still_reaches_a_subscriber()
     {
-        using PluginEvents subscriber = Subscribed(PluginTopics.MusicAnalysisCompleted);
+        using PluginEvents subscriber = Subscribed(PluginTopics.LyricsRequested);
 
         await _bus.PublishAsync(
             PluginMessageEvent.From(
                 Ulid.Empty,
-                PluginTopics.MusicAnalysisCompleted,
+                PluginTopics.LyricsRequested,
                 new TrackPayload("real")
             )
         );
@@ -142,6 +142,27 @@ public sealed class PluginHostTopicReservationTests : IDisposable
         await publisher.PublishAsync("download.completed", new TrackPayload("own"));
 
         _received.Should().ContainSingle().Which.TrackId.Should().Be("own");
+    }
+
+    /// <summary>
+    /// The server published <c>music.analysis.completed</c> until ABI 13.0. A
+    /// plugin built against 12 may still listen for it, so the name stays the
+    /// server's: nobody can publish it and pass for the server.
+    /// </summary>
+    [Fact]
+    public async Task The_retired_analysis_topic_cannot_be_published_or_forged()
+    {
+        const string retired = "music.analysis.completed";
+        using PluginEvents subscriber = Subscribed(retired);
+        using PluginEvents publisher = new(PublisherId, _bus);
+
+        Func<Task> publish = () => publisher.PublishAsync(retired, new TrackPayload("forged"));
+
+        await publish.Should().ThrowAsync<InvalidOperationException>();
+        await _bus.PublishAsync(
+            PluginMessageEvent.From(PublisherId, retired, new TrackPayload("forged"))
+        );
+        _received.Should().BeEmpty();
     }
 
     public void Dispose()

@@ -56,29 +56,6 @@ public static class PluginHookCapability
     public const string AudioTools = "audioTools";
 
     /// <summary>
-    /// Reading and writing the server's own store of files derived from
-    /// analysis - stems, rendered transitions - through
-    /// <see cref="IPluginDerivedAudio" />.
-    /// <para>
-    /// Elevated for the same reason <see cref="Storage" /> is: it is a place
-    /// the plugin did not stage itself into, and deleting from it is not
-    /// harmless.
-    /// </para>
-    /// </summary>
-    public const string DerivedAudio = "derivedAudio";
-
-    /// <summary>
-    /// Writing the DJ analysis record and the stem register through
-    /// <see cref="IPluginMusicAnalysisWriter" />.
-    /// <para>
-    /// Elevated: it is a write to data every other plugin's
-    /// <see cref="IPluginMusicQuery" /> can read, so a plugin declaring it can
-    /// shape what the rest of the platform believes about a track.
-    /// </para>
-    /// </summary>
-    public const string MusicAnalysisWrite = "musicAnalysisWrite";
-
-    /// <summary>
     /// Writing generated lyric timings through <see cref="IPluginLyrics" />.
     /// <para>
     /// Elevated: what lands there is what every client shows under the
@@ -129,8 +106,6 @@ public static class PluginHookCapability
             Encoder,
             Storage,
             AudioTools,
-            DerivedAudio,
-            MusicAnalysisWrite,
             LyricsWrite,
         };
 }

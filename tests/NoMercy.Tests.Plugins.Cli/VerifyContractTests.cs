@@ -44,7 +44,7 @@ public class VerifyContractTests : IDisposable
         catch (Exception) { }
     }
 
-    private static string Manifest(string targetAbi = "12.0", string label = "radio.nav.title") =>
+    private static string Manifest(string targetAbi = "13.0", string label = "radio.nav.title") =>
         $$"""
             {
               "id": "5KTKRT4Z2Y9P59Y40W5CX4TQKF",

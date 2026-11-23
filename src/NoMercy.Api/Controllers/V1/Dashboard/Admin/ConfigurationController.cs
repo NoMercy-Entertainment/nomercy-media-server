@@ -64,9 +64,6 @@ public class ConfigurationController(
                     Swagger = runtimeSettings.Swagger,
                     AllowAdultContent = runtimeSettings.ShowAdultContent,
                     UseSynthesizedDns = runtimeSettings.UseSynthesizedDns,
-                    DerivedAudioCapGb = (int)(
-                        runtimeSettings.DerivedAudioCapBytes / (1024L * 1024 * 1024)
-                    ),
                     UpdateChannel = runtimeSettings.UpdateChannel.ToString().ToLowerInvariant(),
                 },
             }
@@ -143,19 +140,18 @@ public class ConfigurationController(
         if (workerCounts.Any(count => count is < 0))
             return BadRequestResponse("Worker counts must be zero or greater");
 
-        if (request.DerivedAudioCapGb is < 1)
-        {
-            return BadRequestResponse("derived_audio_cap_gb must be at least 1");
-        }
-
         if (request.InternalServerPort is < 0 or > 65535)
         {
-            return BadRequestResponse("internal_port must be between 1 and 65535 (0 leaves it unchanged)");
+            return BadRequestResponse(
+                "internal_port must be between 1 and 65535 (0 leaves it unchanged)"
+            );
         }
 
         if (request.ExternalServerPort is < 0 or > 65535)
         {
-            return BadRequestResponse("external_port must be between 1 and 65535 (0 leaves it unchanged)");
+            return BadRequestResponse(
+                "external_port must be between 1 and 65535 (0 leaves it unchanged)"
+            );
         }
 
         if (
@@ -351,21 +347,6 @@ public class ConfigurationController(
                 runtimeSettings.ShowAdultContent.ToString(),
                 oldAllowAdult,
                 allowAdultContent,
-                userId,
-                changes
-            );
-        }
-
-        if (request.DerivedAudioCapGb is int newCapGb)
-        {
-            long oldCapBytes = runtimeSettings.DerivedAudioCapBytes;
-            long newCapBytes = newCapGb * 1024L * 1024 * 1024;
-            runtimeSettings.DerivedAudioCapBytes = newCapBytes;
-            await PersistAsync(
-                "derivedAudioCapGb",
-                newCapGb.ToString(),
-                oldCapBytes,
-                newCapBytes,
                 userId,
                 changes
             );

@@ -835,7 +835,7 @@ public partial class MusicLogic : IAsyncDisposable
             // A host folder holding two rooted paths is the shape an older
             // import wrote: the album folder once with forward slashes and once
             // with backslashes. Combined with Filename it addresses nothing, so
-            // the track is unplayable and its analysis fails on every sweep.
+            // the track is unplayable.
             // The row fails loudly here rather than being guessed at: which half
             // is the real folder is not something the importer can know.
             if (HostFolderPath.TrySplitAtSecondRoot(hostFolder, out string head, out string tail))

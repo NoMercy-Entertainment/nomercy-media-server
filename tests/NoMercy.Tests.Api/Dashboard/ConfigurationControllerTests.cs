@@ -26,7 +26,9 @@ namespace NoMercy.Tests.Api.Dashboard;
 public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
 {
     private readonly NoMercyApiFactory _factory;
+
     private readonly HttpClient _authed;
+
     private readonly HttpClient _unauthed;
 
     public ConfigurationControllerTests(NoMercyApiFactory factory)
@@ -355,47 +357,6 @@ public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
             .Select(configuration => configuration.Value)
             .FirstOrDefaultAsync();
         storedValue.Should().Be(originalValue);
-    }
-
-    [Fact]
-    public async Task PatchConfiguration_DerivedAudioCapGb_PersistsRoundTrip_AndUpdatesRuntimeSettings()
-    {
-        HttpResponseMessage patchResponse = await PatchAsync(
-            _authed,
-            "/api/v1/dashboard/configuration",
-            new { derived_audio_cap_gb = 20 }
-        );
-        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        HttpResponseMessage getResponse = await _authed.GetAsync("/api/v1/dashboard/configuration");
-        string body = await getResponse.Content.ReadAsStringAsync();
-        using JsonDocument doc = JsonDocument.Parse(body);
-
-        JsonElement data = doc.RootElement.GetProperty("data");
-        data.TryGetProperty("derived_audio_cap_gb", out JsonElement capEl).Should().BeTrue();
-        capEl.GetInt32().Should().Be(20);
-
-        RuntimeServerSettings.Current.DerivedAudioCapBytes.Should().Be(20L * 1024 * 1024 * 1024);
-
-        using IServiceScope scope = _factory.Services.CreateScope();
-        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Configuration? persisted = await appContext.Configuration.FirstOrDefaultAsync(c =>
-            c.Key == "derivedAudioCapGb"
-        );
-        persisted.Should().NotBeNull();
-        persisted!.Value.Should().Be("20");
-    }
-
-    [Fact]
-    public async Task PatchConfiguration_DerivedAudioCapGb_BelowOne_ReturnsBadRequest()
-    {
-        HttpResponseMessage patchResponse = await PatchAsync(
-            _authed,
-            "/api/v1/dashboard/configuration",
-            new { derived_audio_cap_gb = 0 }
-        );
-
-        patchResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]

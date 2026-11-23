@@ -52,8 +52,6 @@ public static class PluginRemoteReach
             // Handed out with the encoder in process, so declared by the same hook.
             [nameof(IPluginContext.Jobs)] = PluginHookCapability.Encoder,
             [nameof(IPluginContext.AudioTools)] = PluginHookCapability.AudioTools,
-            [nameof(IPluginContext.DerivedAudio)] = PluginHookCapability.DerivedAudio,
-            [nameof(IPluginContext.MusicAnalysisWriter)] = PluginHookCapability.MusicAnalysisWrite,
             [nameof(IPluginContext.Lyrics)] = PluginHookCapability.LyricsWrite,
             [nameof(IPluginContext.Browser)] = null,
             [nameof(IPluginContext.Cast)] = null,

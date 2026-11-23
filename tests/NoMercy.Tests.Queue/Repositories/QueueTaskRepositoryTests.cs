@@ -138,16 +138,6 @@ public class QueueTaskRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task CountQueuedMusicAnalysisAsync_OnlyCountsAnalysisPayloadsOnTheMusicQueue()
-    {
-        AddJob("music", 1, "{\"$type\":\"MusicAnalysisJob\"}");
-        AddJob("music", 1, "{\"$type\":\"MusicAnalysisJob\"}");
-        AddJob("music", 1, "{\"$type\":\"SomethingElse\"}");
-
-        (await _repository.CountQueuedMusicAnalysisAsync()).Should().Be(2);
-    }
-
-    [Fact]
     public async Task QueueExistsAsync_TrueOnlyWhenARowSitsOnThatQueue()
     {
         AddJob("encoder", 1, "{}");

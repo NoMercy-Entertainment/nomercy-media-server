@@ -274,20 +274,16 @@ public class PluginDiIntegrationTests : IDisposable
     /// registration of <see cref="IPluginContextFactory" /> must fetch every
     /// optional facade from the container with <c>GetService</c>, not leave it
     /// at its constructor default - otherwise a plugin never sees a facade the
-    /// host registered, encoder and jobs included, not just the three analysis
-    /// ones.
+    /// host registered, encoder and jobs included, not just the audio tools.
     /// </summary>
     [Fact]
     public void DiBuiltFactory_HandsDeclaredFacadesToThePlugin()
     {
         Mock<IPluginAudioToolsFactory> audioToolsFactory = new();
-        Mock<IPluginMusicAnalysisWriterFactory> analysisWriterFactory = new();
         IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
-        IPluginMusicAnalysisWriter analysisWriter = Mock.Of<IPluginMusicAnalysisWriter>();
         audioToolsFactory
             .Setup(f => f.CreateFor(It.IsAny<Ulid>(), It.IsAny<string>()))
             .Returns(audioTools);
-        analysisWriterFactory.Setup(f => f.CreateFor(It.IsAny<Ulid>())).Returns(analysisWriter);
 
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
@@ -298,8 +294,6 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddSingleton(Mock.Of<IPluginJobs>());
         services.AddSingleton(Mock.Of<IPluginMusicQuery>());
         services.AddSingleton(audioToolsFactory.Object);
-        services.AddSingleton(Mock.Of<IPluginDerivedAudio>());
-        services.AddSingleton(analysisWriterFactory.Object);
 
         services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
@@ -307,10 +301,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceProvider provider = BuildProvider(services);
         IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
 
-        PluginCapabilities capabilities = new()
-        {
-            Hooks = ["encoder", "storage", "audioTools", "derivedAudio", "musicAnalysisWrite"],
-        };
+        PluginCapabilities capabilities = new() { Hooks = ["encoder", "storage", "audioTools"] };
 
         IPluginContext context = factory.Create(
             Ulid.NewUlid(),
@@ -322,8 +313,6 @@ public class PluginDiIntegrationTests : IDisposable
         context.Music.Should().NotBeNull();
         context.Encoder.Should().NotBeNull();
         context.AudioTools.Should().NotBeNull();
-        context.DerivedAudio.Should().NotBeNull();
-        context.MusicAnalysisWriter.Should().NotBeNull();
     }
 
     /// <summary>
@@ -347,10 +336,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceProvider provider = BuildProvider(services);
         IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
 
-        PluginCapabilities capabilities = new()
-        {
-            Hooks = ["encoder", "storage", "audioTools", "derivedAudio", "musicAnalysisWrite"],
-        };
+        PluginCapabilities capabilities = new() { Hooks = ["encoder", "storage", "audioTools"] };
 
         IPluginContext context = factory.Create(
             Ulid.NewUlid(),
@@ -362,8 +348,6 @@ public class PluginDiIntegrationTests : IDisposable
         context.Music.Should().BeNull();
         context.Encoder.Should().BeNull();
         context.AudioTools.Should().BeNull();
-        context.DerivedAudio.Should().BeNull();
-        context.MusicAnalysisWriter.Should().BeNull();
     }
 
     /// <summary>

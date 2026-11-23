@@ -109,7 +109,7 @@ public interface IPluginContext
     IPluginJobs? Jobs => null;
 
     /// <summary>
-    /// Running ffmpeg over a track or a derived file, and splitting stems.
+    /// Running ffmpeg over a track or a file of the plugin's own.
     /// <para>
     /// Present only when the plugin declared
     /// <see cref="PluginHookCapability.AudioTools" />; null otherwise, so the
@@ -117,27 +117,6 @@ public interface IPluginContext
     /// </para>
     /// </summary>
     IPluginAudioTools? AudioTools => null;
-
-    /// <summary>
-    /// The server's own store of files derived from analysis - stems, rendered
-    /// transitions - keyed by content rather than by library path.
-    /// <para>
-    /// Present only when the plugin declared
-    /// <see cref="PluginHookCapability.DerivedAudio" />; null otherwise, so the
-    /// absence is checkable rather than a call that throws.
-    /// </para>
-    /// </summary>
-    IPluginDerivedAudio? DerivedAudio => null;
-
-    /// <summary>
-    /// Writing the DJ analysis record and the stem register.
-    /// <para>
-    /// Present only when the plugin declared
-    /// <see cref="PluginHookCapability.MusicAnalysisWrite" />; null otherwise,
-    /// so the absence is checkable rather than a call that throws.
-    /// </para>
-    /// </summary>
-    IPluginMusicAnalysisWriter? MusicAnalysisWriter => null;
 
     /// <summary>
     /// Reading a track's lyrics state and writing generated timings.

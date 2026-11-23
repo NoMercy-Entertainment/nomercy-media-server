@@ -65,10 +65,26 @@ public class PluginAbiTests
     /// missing-type error naming nothing its author recognises.
     /// </summary>
     [Fact]
-    public void ThePreviousMajorIsRefusedBecauseItsTypesNoLongerExist()
+    public void ElevenIsRefusedBecauseItsTypesNoLongerExist()
     {
         PluginAbi.IsCompatible("11.0").Should().BeFalse();
-        PluginAbi.Oldest.Major.Should().Be(PluginAbi.Current.Major);
+        PluginAbi.Oldest.Should().Be(new Version(12, 0));
+    }
+
+    /// <summary>
+    /// Thirteen removed members and renamed nothing, so it gives the usual
+    /// grace: a plugin built against any twelve loads, and only one that
+    /// called a removed member has to be rebuilt.
+    /// </summary>
+    [Theory]
+    [InlineData("12.0")]
+    [InlineData("12.10")]
+    [InlineData("12.15")]
+    [InlineData("13.0")]
+    public void APluginBuiltAgainstTwelveStillLoadsOnThirteen(string targetAbi)
+    {
+        PluginAbi.Current.Major.Should().Be(13);
+        PluginAbi.IsCompatible(targetAbi).Should().BeTrue();
     }
 
     [Fact]

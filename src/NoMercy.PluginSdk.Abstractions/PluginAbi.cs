@@ -85,7 +85,18 @@ public static class PluginAbi
     // the constructor a plugin was compiled against is still there) with PluginTrackAlbum and
     // PluginTrackArtist, and PluginTrack's own Equals and GetHashCode, which compare the lists
     // by value so two reads of one track stay equal.
-    public static Version Current { get; } = new(12, 15);
+    // 13.0 removed the server's own music analysis and every member that existed only for it:
+    // IPluginMusicAnalysisWriter and IPluginDerivedAudio with their members on IPluginContext;
+    // IPluginMusicQuery.GetAnalysisAsync, GetDjAnalysisAsync, GetStemsAsync,
+    // GetTracksNeedingDjAnalysisAsync, GetTracksMissingStemsAsync and GetFailedDjAnalysisAsync;
+    // IPluginAudioTools.SplitStemsAsync; PluginAudioInput.Derived and its StorageKey;
+    // PluginHookCapability.DerivedAudio and MusicAnalysisWrite; PluginTopics.MusicAnalysisCompleted;
+    // and the records only these carried (PluginTrackAudioAnalysis, PluginTrackDjAnalysis,
+    // PluginTrackDjFailure, PluginTrackStem, PluginStemFile, PluginStemSplitResult,
+    // PluginMusicAnalysisCompleted, PluginCuePoint, PluginChord, PluginStemCoverage,
+    // PluginStemSet, PluginStemPolicy). A major because members a plugin may call are gone.
+    // Oldest stays 12.0: a plugin built against 12 that calls none of them keeps loading.
+    public static Version Current { get; } = new(13, 0);
 
     /// <summary>
     /// The oldest major this server can load at all.
@@ -95,11 +106,12 @@ public static class PluginAbi
     /// nothing and saves every author a forced rebuild.
     /// </para>
     /// <para>
-    /// Twelve is not that kind of major. The SDK assembly and every namespace
+    /// Twelve was not that kind of major. The SDK assembly and every namespace
     /// in it were renamed, so a plugin built against eleven resolves no type at
     /// all. Granting it grace would install a plugin that then fails at load
     /// with a missing-type error naming nothing its author recognises, instead
-    /// of a refusal that says rebuild.
+    /// of a refusal that says rebuild. Thirteen is the usual kind: it removed
+    /// members, so twelve stays loadable.
     /// </para>
     /// </summary>
     public static Version Oldest { get; } = new(12, 0);

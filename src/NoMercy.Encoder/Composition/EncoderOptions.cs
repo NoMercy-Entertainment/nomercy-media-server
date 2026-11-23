@@ -125,8 +125,8 @@ public class EncoderOptions
     public string? VadModelPath { get; set; }
 
     /// <summary>
-    /// Path to the stemsplit GGUF model; the analysis job passes its file name
-    /// relative to the ffmpeg folder.
+    /// Path to the stemsplit GGUF model; a filter graph is handed its file
+    /// name, relative to the ffmpeg folder.
     /// </summary>
     public string? StemsplitModelPath { get; set; }
 

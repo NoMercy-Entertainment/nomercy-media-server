@@ -136,20 +136,6 @@ public class QueueTaskRepository(IDbContextFactory<QueueContext> queueContextFac
         return byRelease;
     }
 
-    public async Task<int> CountQueuedMusicAnalysisAsync(
-        CancellationToken cancellationToken = default
-    )
-    {
-        await using QueueContext context = await queueContextFactory.CreateDbContextAsync(
-            cancellationToken
-        );
-
-        return await context
-            .QueueJobs.AsNoTracking()
-            .Where(job => job.Queue == QueueNames.Music && job.Payload.Contains("MusicAnalysisJob"))
-            .CountAsync(cancellationToken);
-    }
-
     public async Task<bool> QueueExistsAsync(
         string queueName,
         CancellationToken cancellationToken = default

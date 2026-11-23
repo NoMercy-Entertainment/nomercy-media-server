@@ -18,12 +18,6 @@ namespace NoMercy.PluginSdk.Abstractions;
 public static class PluginTopics
 {
     /// <summary>
-    /// Published after every finished track analysis, Ok or Failed. The
-    /// payload deserialises as <see cref="PluginMusicAnalysisCompleted" />.
-    /// </summary>
-    public const string MusicAnalysisCompleted = "music.analysis.completed";
-
-    /// <summary>
     /// Published when a track's lyrics were asked for and the server had
     /// none, or only text without timing: the cue for a plugin that can
     /// generate timing. At most once per track per day. The payload
