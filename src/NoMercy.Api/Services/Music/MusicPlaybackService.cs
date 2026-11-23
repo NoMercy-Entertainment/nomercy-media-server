@@ -31,6 +31,7 @@ public class MusicPlaybackService
     private readonly IEventBus? _eventBus;
     private readonly MusicActiveDeviceRegistry _activeDeviceRegistry;
     private readonly ILogger<MusicPlaybackService>? _logger;
+    private readonly MusicPlaybackAnnouncer? _announcer;
     private static int PlayerStateEventId => Interlocked.Increment(ref field);
 
     public MusicPlaybackService(
@@ -39,7 +40,8 @@ public class MusicPlaybackService
         IClientMessenger clientMessenger,
         MusicActiveDeviceRegistry activeDeviceRegistry,
         IEventBus? eventBus = null,
-        ILogger<MusicPlaybackService>? logger = null
+        ILogger<MusicPlaybackService>? logger = null,
+        MusicPlaybackAnnouncer? announcer = null
     )
     {
         _stateManager = stateManager;
@@ -48,6 +50,7 @@ public class MusicPlaybackService
         _activeDeviceRegistry = activeDeviceRegistry;
         _eventBus = eventBus;
         _logger = logger;
+        _announcer = announcer;
     }
 
     private readonly ConcurrentDictionary<Guid, Timer> _timers = new();
@@ -267,6 +270,7 @@ public class MusicPlaybackService
         _stateLocks.TryRemove(userId, out _);
         _playbackStartsInFlight.TryRemove(userId, out _);
         _lastBroadcastFingerprints.TryRemove(userId, out _);
+        _announcer?.Forget(userId);
     }
 
     /// <summary>
@@ -548,6 +552,10 @@ public class MusicPlaybackService
             await PublishCompletedEventAsync(user.Id, state);
         }
 
+        // What plays next is a start for a plugin, also when repeat one plays
+        // the same track again.
+        _announcer?.TrackEnded(user.Id);
+
         UpdateStateBasedOnRepeatMode(state, currentIndex);
         state.CrossfadeSignalSent = false; // Reset for next track
 
@@ -579,6 +587,10 @@ public class MusicPlaybackService
 
     public async Task UpdatePlaybackState(User user, MusicPlayerState? state)
     {
+        // Before the coalescing below: a broadcast that is dropped as an echo
+        // can still carry a change a plugin has to hear.
+        _announcer?.Observe(user.Id, state);
+
         MusicPlayerState? broadcastState = null;
         if (state is not null)
         {
@@ -643,8 +655,8 @@ public class MusicPlaybackService
             state.VolumePercentage,
             string.Join(
                 ',',
-                state.DeviceVolumes
-                    .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                state
+                    .DeviceVolumes.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
                     .Select(pair => $"{pair.Key.ToLowerInvariant()}={pair.Value}")
             )
         );

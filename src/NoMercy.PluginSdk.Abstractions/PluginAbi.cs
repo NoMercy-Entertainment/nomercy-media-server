@@ -69,7 +69,13 @@ public static class PluginAbi
     // 12.13 added PluginLibraryShow.AddedBy (an init-only property, so the constructor a
     // plugin was compiled against is still there) and PluginLibraryAddedBy (two constants):
     // why a show is in its library, manual or file, null when the server does not say.
-    public static Version Current { get; } = new(12, 13);
+    // 12.14 added the music.playback topics on PluginTopics (started, paused, resumed, seeked,
+    // stopped, queue.changed, device.changed, mode.changed) and their payload records
+    // (PluginMusicPlaybackStarted, PluginMusicPlaybackPosition, PluginMusicPlaybackStopped,
+    // PluginMusicPlaybackQueueChanged, PluginMusicPlaybackDeviceChanged,
+    // PluginMusicPlaybackModeChanged): what a listener plays, told to a plugin that holds
+    // player.state. New constants and new types only.
+    public static Version Current { get; } = new(12, 14);
 
     /// <summary>
     /// The oldest major this server can load at all.

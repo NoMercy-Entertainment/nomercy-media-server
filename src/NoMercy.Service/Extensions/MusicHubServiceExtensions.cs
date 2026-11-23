@@ -23,6 +23,7 @@ public static class MusicHubServiceExtensions
         // Singletons - shared state across requests
         services.AddSingleton<MusicPlayerStateManager>();
         services.AddSingleton<MusicActiveDeviceRegistry>();
+        services.AddSingleton<MusicPlaybackAnnouncer>();
         services.AddSingleton<MusicPlaybackService>();
         services.AddSingleton<MusicPlaybackCommandHandler>();
         // Single-flight lyric fetch coalescing across concurrent device requests.

@@ -12,6 +12,7 @@
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Player;
@@ -198,7 +199,14 @@ public class PluginContext : IPluginContext
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
         ArgumentNullException.ThrowIfNull(services);
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        Events = new PluginEvents(pluginId, _eventBus, Logger);
+        // Asked for at each use, never held: the broker reads the plugins the
+        // manager holds, and the manager is built with the factory that builds
+        // this context. A host that registered none answers null, and what
+        // needs the broker's answer then refuses.
+        Func<IPluginCapabilityBroker?> broker = () =>
+            services.GetService(typeof(IPluginCapabilityBroker)) as IPluginCapabilityBroker;
+
+        Events = new PluginEvents(pluginId, _eventBus, Logger, broker);
         DataFolderPath = dataFolderPath ?? throw new ArgumentNullException(nameof(dataFolderPath));
         Configuration = new PluginConfiguration(dataFolderPath, storage);
         Secrets = secrets ?? throw new ArgumentNullException(nameof(secrets));

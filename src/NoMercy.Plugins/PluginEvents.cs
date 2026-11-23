@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
 namespace NoMercy.PluginSdk;
 
@@ -22,9 +23,17 @@ namespace NoMercy.PluginSdk;
 /// payload it expects; it never holds the bus, so it never sees the events it
 /// has no capability for.
 /// </summary>
-public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus, ILogger? logger = null)
-    : IPluginEvents,
-        IDisposable
+/// <param name="broker">
+/// Asked on every delivery of a topic that needs a capability, so an owner's
+/// approval or refusal takes effect without the plugin subscribing again.
+/// Resolved late: the broker reads the plugins this facade is built for.
+/// </param>
+public sealed class PluginEvents(
+    Ulid pluginId,
+    IEventBus eventBus,
+    ILogger? logger = null,
+    Func<IPluginCapabilityBroker?>? broker = null
+) : IPluginEvents, IDisposable
 {
     private readonly List<IDisposable> _subscriptions = [];
 
@@ -52,6 +61,11 @@ public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus, ILogger? log
                         return Task.CompletedTask;
                     }
 
+                    if (!MayHear(topic))
+                    {
+                        return Task.CompletedTask;
+                    }
+
                     T? payload = message.Payload is null
                         ? default
                         : message.Payload.Deserialize<T>(JsonSerializerOptions.Web);
@@ -60,6 +74,22 @@ public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus, ILogger? log
                 }
             )
         );
+    }
+
+    /// <summary>
+    /// What a person listens to goes only to a plugin the owner let hear it.
+    /// A host that wired no broker hands such a topic to nobody.
+    /// </summary>
+    private bool MayHear(string topic)
+    {
+        if (PluginHostTopics.CapabilityFor(topic) is not { } capability)
+        {
+            return true;
+        }
+
+        IPluginCapabilityBroker? check = broker?.Invoke();
+
+        return check is not null && check.Check(pluginId, capability) is null;
     }
 
     public Task PublishAsync<T>(string name, T payload, CancellationToken ct = default)
