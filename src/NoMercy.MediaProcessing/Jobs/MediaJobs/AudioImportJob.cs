@@ -18,7 +18,6 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Artists;
-using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Common;
 using NoMercy.MediaProcessing.Images;
 using NoMercy.MediaProcessing.Jobs.Dto;
@@ -579,14 +578,6 @@ public class AudioImportJob : AbstractMusicFolderJob
                 folderLibrary,
                 coverPalette
             );
-
-            // Analysis is part of the import, not a switch to find afterwards.
-            // It belongs here rather than on LibraryScanCompletedEvent: a music
-            // scan dispatches these import jobs and then announces itself, so at
-            // that moment no Track row exists yet and a brand-new library would
-            // wait for the hourly sweep. The library's own AnalyzeAudio is the
-            // opt-out, the same way AutoEncodeOnScan gates the encode below.
-            AudioAnalysisDispatch.AfterStore(jobDispatcher, albumLibrary, musicBrainzTrack.Id);
 
             // Same per-library opt-in AutoEncodeSubscriber already enforces for
             // video — a preset assignment is "the preset to use when I encode",

@@ -35,7 +35,6 @@ using NoMercy.Encoder.Subtitles;
 using NoMercy.Events;
 using NoMercy.Events.Audit;
 using NoMercy.MediaProcessing.Collections;
-using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.MediaProcessing.Episodes;
 using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Files;
@@ -620,7 +619,6 @@ public static partial class ServiceConfiguration
         services.AddScoped<IActivityRepository, ActivityRepository>();
         services.AddScoped<IIncompleteEncodeRepository, IncompleteEncodeRepository>();
         services.AddScoped<IQueueCardMediaRepository, QueueCardMediaRepository>();
-        services.AddScoped<IAudioAnalysisStatisticsRepository, AudioAnalysisStatisticsRepository>();
         services.AddScoped<IQueueTaskRepository, QueueTaskRepository>();
 
         // Add Managers
@@ -740,22 +738,6 @@ public static partial class ServiceConfiguration
             MediaProcessing.Fingerprinting.FfmpegChromaprintFingerprinter
         >();
 
-        // Same bridging reason as the fingerprinter above: the analyzer needs the
-        // Encoder-layer process runner and ffmpeg path, which MediaProcessing may
-        // reach and Providers may not.
-        services.AddTransient<
-            MediaProcessing.AudioAnalysis.IAudioAnalyzer,
-            MediaProcessing.AudioAnalysis.FfmpegAudioAnalyzer
-        >();
-
-        // One scheduler for every path that wants a library analyzed: the hourly
-        // sweep, the hook that fires when a scan finishes, and the dashboard's
-        // run-now button. It holds nothing but a context factory, so a singleton.
-        services.AddSingleton<
-            MediaProcessing.AudioAnalysis.IAudioAnalysisScheduler,
-            Jobs.AudioAnalysisScheduler
-        >();
-
         // Transcode-scoped IStorage — paths are relative to AppFiles.TranscodePath.
         // TrailerCache uses this so it can pass scope-relative paths (Rule 1 of
         // the IStorage path contract) instead of Path.Combine(TranscodePath, ...).
@@ -769,32 +751,12 @@ public static partial class ServiceConfiguration
             }
         );
 
-        // Derived-audio-scoped IStorage: stems and rendered transitions live under
-        // AppFiles.DerivedAudioPath, addressed by content hash. Same shape as the
-        // transcode scope above.
-        services.AddKeyedSingleton<IStorage>(
-            "derived-audio",
-            (sp, _) =>
-            {
-                IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
-                Storage.Validation.StoragePathGuard guard = new(
-                    [AppFiles.DerivedAudioPath],
-                    driver
-                );
-                return new Storage.Drivers.Local.LocalStorage(driver, guard);
-            }
-        );
         services.AddSingleton<MediaProcessing.Trailers.ITrailerCache>(
             sp => new MediaProcessing.Trailers.TrailerCache(
                 sp.GetRequiredKeyedService<IStorage>("transcode"),
                 sp.GetRequiredService<ILogger<MediaProcessing.Trailers.TrailerCache>>()
             )
         );
-        services.AddSingleton<IDerivedAudioStore>(sp => new DerivedAudioStore(
-            sp.GetRequiredKeyedService<IStorage>("derived-audio"),
-            sp.GetRequiredService<IDbContextFactory<MediaContext>>(),
-            sp.GetRequiredService<ILogger<DerivedAudioStore>>()
-        ));
 
         // Concrete activity probe for the deferred hardware benchmark —
         // Encoder's default is a no-op (always idle) so it stays decoupled
@@ -831,10 +793,6 @@ public static partial class ServiceConfiguration
         >();
         services.AddHostedService<ChapterSegmentSubscriber>();
         services.AddHostedService<MediaProcessing.Segments.ChapterSegmentStartupSweepService>();
-        // Analysis is part of every music import and rescan, not a switch a
-        // user has to find. Same shape as AutoEncodeSubscriber above: a hosted
-        // service that subscribes on start and unsubscribes on stop.
-        services.AddHostedService<Subscribers.AudioAnalysisSubscriber>();
         services.AddHostedService<PaletteBackfillStartupService>();
         services.AddHostedService<MusicCoverRepairStartupService>();
         services.AddHostedService<MusicTrackArtistRepairStartupService>();
@@ -850,6 +808,19 @@ public static partial class ServiceConfiguration
         // sweep above because it rewrites rows rather than removing them.
         services.AddSingleton<IDoubledHostFolderRepair, DoubledHostFolderRepair>();
         services.AddHostedService<DoubledHostFolderRepairStartupService>();
+
+        // The folder the server kept derived audio in before music analysis
+        // left it. Scoped to the cache folder, so the removal can name nothing
+        // outside it.
+        services.AddSingleton<IRetiredDerivedAudioFolder>(sp =>
+        {
+            IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
+            Storage.Validation.StoragePathGuard guard = new([AppFiles.CachePath], driver);
+            return new RetiredDerivedAudioFolder(
+                new Storage.Drivers.Local.LocalStorage(driver, guard)
+            );
+        });
+        services.AddHostedService<RetiredDerivedAudioFolderStartupService>();
 
         // Before AddPluginSystem, so its null-object fallback stays a no-op.
         // This host maps /pluginHub, so a plugin's Hub.PushAsync reaches real

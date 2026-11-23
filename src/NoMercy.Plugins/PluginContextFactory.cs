@@ -44,8 +44,6 @@ public class PluginContextFactory(
     IPluginJobs? jobs = null,
     IPluginMusicQuery? musicQuery = null,
     IPluginAudioToolsFactory? audioToolsFactory = null,
-    IPluginDerivedAudio? derivedAudio = null,
-    IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null,
     Func<IPluginMediaFactory?>? mediaFactory = null,
     IPluginLyricsFactory? lyricsFactory = null,
     IPluginLibraryScanner? libraryScanner = null,
@@ -92,25 +90,11 @@ public class PluginContextFactory(
             jobsFacade = jobs;
         }
 
-        // The three analysis facades: each gated on its own hook, the same
-        // "declaring is not holding" rule as the writer and the storage/encoder
-        // pair above.
+        // Gated on its own hook, the same "declaring is not holding" rule as
+        // the writer and the storage/encoder pair above.
         IPluginAudioTools? audioToolsFacade = null;
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.AudioTools))
             audioToolsFacade = audioToolsFactory?.CreateFor(pluginId, dataFolderPath);
-
-        IPluginDerivedAudio? derivedAudioFacade = null;
-        if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.DerivedAudio))
-            derivedAudioFacade = derivedAudio;
-
-        IPluginMusicAnalysisWriter? analysisWriter = null;
-        if (
-            PluginCapabilityGuard.DeclaresHook(
-                capabilities,
-                PluginHookCapability.MusicAnalysisWrite
-            )
-        )
-            analysisWriter = analysisWriterFactory?.CreateFor(pluginId);
 
         IPluginLyrics? lyrics = null;
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.LyricsWrite))
@@ -136,8 +120,6 @@ public class PluginContextFactory(
             jobsFacade,
             musicQuery,
             audioToolsFacade,
-            derivedAudioFacade,
-            analysisWriter,
             mediaFactory?.Invoke()?.CreateFor(pluginId),
             // Only when the plugin holds a writer: importing is a write, and
             // one without the other is a door with no lock on it.

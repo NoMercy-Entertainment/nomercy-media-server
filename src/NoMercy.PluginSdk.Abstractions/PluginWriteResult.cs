@@ -12,9 +12,9 @@
 namespace NoMercy.PluginSdk.Abstractions;
 
 /// <summary>
-/// What became of one write through <see cref="IPluginMusicAnalysisWriter" />.
-/// A write that never lands - a track id the host does not know, a version
-/// older than the row already stored - looks identical to success unless the
+/// What became of one write through <see cref="IPluginLyrics" />.
+/// A write that never lands - a track id the host does not know, lyrics the
+/// host may not replace - looks identical to success unless the
 /// reason travels with the result, so it does here rather than as an
 /// exception a caller has to know to catch.
 /// </summary>

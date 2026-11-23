@@ -52,11 +52,7 @@ public class PluginRuntimeModeNeedsTests
         [
             Plugin(
                 Analyser,
-                new PluginCapabilities
-                {
-                    Hooks = [PluginHookCapability.MusicAnalysisWrite],
-                    Rest = true,
-                }
+                new PluginCapabilities { Hooks = [PluginHookCapability.LyricsWrite], Rest = true }
             ),
             Plugin(Fits, new PluginCapabilities { Hooks = [PluginHookCapability.LibraryWrite] }),
         ];
@@ -89,10 +85,7 @@ public class PluginRuntimeModeNeedsTests
         JObject need = (JObject)
             RuntimeMode(new PluginIsolationFit())["needs_in_process"]![Analyser.ToString()]!;
 
-        need["facades"]!
-            .Values<string>()
-            .Should()
-            .BeEquivalentTo(nameof(IPluginContext.MusicAnalysisWriter));
+        need["facades"]!.Values<string>().Should().BeEquivalentTo(nameof(IPluginContext.Lyrics));
         need["hooks"]!.Values<string>().Should().BeEmpty();
         need["notice"]!.Value<string>().Should().Be(PluginIsolationLevel.NeedsInProcessKey);
         need["controllers"]!.Value<bool>().Should().BeTrue();

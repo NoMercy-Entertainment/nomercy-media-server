@@ -79,47 +79,6 @@ public class TracksController : BaseController
         );
     }
 
-    /// <summary>
-    /// Audio analysis for a set of tracks.
-    /// <para>
-    /// A dedicated route rather than a field on every track response: analysis
-    /// is absent for most rows for most of a library's life, so inlining it
-    /// would grow every list for every user to carry mostly nulls.
-    /// </para>
-    /// </summary>
-    [HttpPost]
-    [Route("analysis")]
-    public async Task<IActionResult> Analysis([FromBody] TrackAudioAnalysisRequestDto request)
-    {
-        if (request.TrackIds.Count == 0)
-            return BadRequestResponse("No track ids supplied");
-
-        if (request.TrackIds.Count > TrackAudioAnalysisRequestDto.MaxTrackIds)
-            return BadRequestResponse(
-                $"At most {TrackAudioAnalysisRequestDto.MaxTrackIds} track ids per request"
-            );
-
-        Guid[] trackIds = request.TrackIds.Distinct().ToArray();
-
-        TrackAnalysisBundle bundle = await _musicRepository.GetTrackAnalysisBundleAsync(trackIds);
-
-        Dictionary<Guid, TrackDjAnalysis> djByTrackId = bundle.Dj.ToDictionary(row => row.TrackId);
-        ILookup<Guid, TrackStem> stemsByTrackId = bundle.Stems.ToLookup(row => row.TrackId);
-
-        List<TrackAudioAnalysisDto> data =
-        [
-            .. bundle.Analysis.Select(row => new TrackAudioAnalysisDto(row)
-            {
-                Dj = djByTrackId.TryGetValue(row.TrackId, out TrackDjAnalysis? dj)
-                    ? new TrackDjAnalysisDto(dj, row.KeyName)
-                    : null,
-                Stems = [.. stemsByTrackId[row.TrackId].Select(stem => new TrackStemDto(stem))],
-            }),
-        ];
-
-        return Ok(new TrackAudioAnalysisResponseDto { Data = data });
-    }
-
     [HttpPost]
     [Route("{id:guid}/like")]
     public async Task<IActionResult> Value(Guid id, [FromBody] LikeRequestDto request)

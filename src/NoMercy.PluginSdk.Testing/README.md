@@ -6,7 +6,7 @@ a test switches on and off.
 ## Install
 
 ```xml
-<PackageReference Include="NoMercy.PluginSdk.Testing" Version="12.*" />
+<PackageReference Include="NoMercy.PluginSdk.Testing" Version="13.*" />
 ```
 
 ## A test

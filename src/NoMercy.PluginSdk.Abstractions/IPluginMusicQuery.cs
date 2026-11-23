@@ -12,7 +12,7 @@
 namespace NoMercy.PluginSdk.Abstractions;
 
 /// <summary>
-/// Reading the music library, including what analysis measured about it.
+/// Reading the music library.
 /// <para>
 /// <see cref="IPluginLibraryQuery" /> covers libraries, shows, movies, episodes
 /// and files. It has never covered music, so a plugin working on a music
@@ -68,98 +68,6 @@ public interface IPluginMusicQuery
         IReadOnlyList<Guid> trackIds,
         CancellationToken ct = default
     ) => Task.FromResult<IReadOnlyList<PluginTrack>>([]);
-
-    /// <summary>
-    /// What analysis measured, for the tracks that have it.
-    /// <para>
-    /// A second call rather than a member of <see cref="PluginTrack" />: most
-    /// rows have no analysis for most of a library's life, and a plugin listing
-    /// a library should not pay for measurements it will not read. A track with
-    /// no analysis is absent from the result rather than returned empty, so the
-    /// gap is explicit.
-    /// </para>
-    /// </summary>
-    Task<IReadOnlyList<PluginTrackAudioAnalysis>> GetAnalysisAsync(
-        IReadOnlyList<Guid> trackIds,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// The DJ measurements for the given tracks, for the ones that have an Ok
-    /// row.
-    /// <para>
-    /// A separate call from <see cref="GetAnalysisAsync" /> for the reason
-    /// <see cref="PluginTrackDjAnalysis" /> is a separate record: most tracks
-    /// have no DJ row for most of a library's life, and a plugin reading the
-    /// base analysis should not pay for the heavier DJ measurements it did not
-    /// ask for. A track with no DJ row, or one that is not Ok, is absent from
-    /// the result rather than returned with empty lists.
-    /// </para>
-    /// </summary>
-    Task<IReadOnlyList<PluginTrackDjAnalysis>> GetDjAnalysisAsync(
-        IReadOnlyList<Guid> trackIds,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// The stem files registered for the given tracks, of every kind and
-    /// coverage. A track with no stems yet contributes nothing to the result.
-    /// </summary>
-    Task<IReadOnlyList<PluginTrackStem>> GetStemsAsync(
-        IReadOnlyList<Guid> trackIds,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// Tracks in the named library that have a base analysis verdict but no DJ
-    /// row current with <paramref name="djAnalyzerVersion" /> — the automix
-    /// sweep's worklist. <paramref name="take" /> is clamped by the host, the
-    /// same way <see cref="GetTracksAsync" /> clamps it. A library id that
-    /// does not parse yields an empty result rather than a throw.
-    /// </summary>
-    Task<IReadOnlyList<Guid>> GetTracksNeedingDjAnalysisAsync(
-        string libraryId,
-        int djAnalyzerVersion,
-        int skip = 0,
-        int take = 500,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// Tracks in the named library whose DJ analysis is Ok but are still
-    /// missing a stem file the given <paramref name="policy" /> calls for at
-    /// <paramref name="producerVersion" />. <see cref="PluginStemPolicy.OnDemand" />
-    /// always answers empty without touching the database — under that policy
-    /// there is no sweep to drive. <paramref name="take" /> is clamped the same
-    /// way <see cref="GetTracksAsync" /> clamps it, and a library id that does
-    /// not parse yields an empty result rather than a throw.
-    /// </summary>
-    Task<IReadOnlyList<Guid>> GetTracksMissingStemsAsync(
-        string libraryId,
-        string producerVersion,
-        PluginStemPolicy policy,
-        int skip = 0,
-        int take = 500,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// The DJ rows in the named library that a plugin marked failed at
-    /// <paramref name="djAnalyzerVersion" /> — exactly the tracks
-    /// <see cref="GetTracksNeedingDjAnalysisAsync" /> leaves out. Ok and
-    /// Pending rows, and rows at any other version, are not returned. Paged
-    /// and ordered by track id, with <paramref name="take" /> clamped the same
-    /// way <see cref="GetTracksAsync" /> clamps it; a library id that does not
-    /// parse yields an empty result rather than a throw. Releasing a track for
-    /// another attempt is <c>IPluginMusicAnalysisWriter.DeleteDjAnalysisAsync</c>.
-    /// </summary>
-    Task<IReadOnlyList<PluginTrackDjFailure>> GetFailedDjAnalysisAsync(
-        string libraryId,
-        int djAnalyzerVersion,
-        int skip = 0,
-        int take = 500,
-        CancellationToken ct = default
-    );
 }
 
 /// <param name="Album">
@@ -287,51 +195,3 @@ public record PluginTrack(
         return hash.ToHashCode();
     }
 }
-
-/// <summary>
-/// One track's measurements. Every member is nullable because a partial
-/// analysis is normal, not a defect — the detectors are independent, and one
-/// finding nothing leaves its members null.
-/// </summary>
-/// <param name="Bpm">
-/// Present whenever the tempo detector produced one, however unsure it was.
-/// Read it together with <paramref name="BpmConfidence" />.
-/// </param>
-/// <param name="BpmConfidence">
-/// 0..1, how far to trust <paramref name="Bpm" />; 0 means two detector
-/// passes disagreed outright. Null when only one pass ran, so no comparison
-/// was possible.
-/// </param>
-/// <param name="KeyName">As the detector named it: "C", "F#", "Am".</param>
-/// <param name="KeyCamelot">The same key as a Camelot code: "8A".</param>
-/// <param name="Energy">
-/// A 0..1 judgment derived from <paramref name="IntegratedLufs" /> and
-/// <paramref name="SpectralCentroid" />, not a measurement. Both inputs are
-/// returned so a consumer that disagrees can recompute.
-/// </param>
-/// <param name="IntroEndMs">
-/// End of leading silence. A trim point, not a musical phrase boundary.
-/// </param>
-/// <param name="OutroStartMs">Start of trailing silence, as above.</param>
-/// <param name="AnalyzerVersion">
-/// Which analyzer produced this. A plugin holding cached results can compare it
-/// rather than assuming what it stored is still current.
-/// </param>
-public record PluginTrackAudioAnalysis(
-    Guid TrackId,
-    double? Bpm,
-    double? BpmConfidence,
-    int? BeatOffsetMs,
-    double? BeatIntervalMs,
-    string? KeyName,
-    string? KeyCamelot,
-    double? KeyConfidence,
-    double? IntegratedLufs,
-    double? TruePeakDb,
-    double? LoudnessRange,
-    double? Energy,
-    double? SpectralCentroid,
-    int? IntroEndMs,
-    int? OutroStartMs,
-    int AnalyzerVersion
-);

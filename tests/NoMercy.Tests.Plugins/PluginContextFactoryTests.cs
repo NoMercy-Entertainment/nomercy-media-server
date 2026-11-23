@@ -26,13 +26,12 @@ using Xunit;
 namespace NoMercy.Tests.Plugins;
 
 /// <summary>
-/// The three analysis facades - <see cref="IPluginContext.AudioTools" />,
-/// <see cref="IPluginContext.DerivedAudio" /> and
-/// <see cref="IPluginContext.MusicAnalysisWriter" /> - each gated on its own
-/// hook, the same rule <see cref="PluginCapabilityGuardTests" /> exercises at
-/// the guard level: declaring a capability is an intention, not a grant, and
-/// the factory must hand back null rather than a facade for a hook a plugin
-/// never declared.
+/// The facades a hook gives - <see cref="IPluginContext.AudioTools" /> and
+/// <see cref="IPluginContext.Lyrics" /> - each gated on its own hook, the same
+/// rule <see cref="PluginCapabilityGuardTests" /> exercises at the guard
+/// level: declaring a capability is an intention, not a grant, and the
+/// factory must hand back null rather than a facade for a hook a plugin never
+/// declared.
 /// </summary>
 public class PluginContextFactoryTests
 {
@@ -48,8 +47,6 @@ public class PluginContextFactoryTests
     private readonly Mock<IPluginAtomicConfiguration> _platformConfiguration = new();
     private readonly Mock<IPluginHubContextFactory> _hubContextFactory = new();
     private readonly Mock<IPluginAudioToolsFactory> _audioToolsFactory = new();
-    private readonly Mock<IPluginDerivedAudio> _derivedAudio = new();
-    private readonly Mock<IPluginMusicAnalysisWriterFactory> _analysisWriterFactory = new();
     private readonly Mock<IPluginLyricsFactory> _lyricsFactory = new();
 
     public PluginContextFactoryTests()
@@ -74,8 +71,6 @@ public class PluginContextFactoryTests
             _platformConfiguration.Object,
             _hubContextFactory.Object,
             audioToolsFactory: _audioToolsFactory.Object,
-            derivedAudio: _derivedAudio.Object,
-            analysisWriterFactory: _analysisWriterFactory.Object,
             lyricsFactory: _lyricsFactory.Object,
             pluginLoggers: pluginLoggers
         );
@@ -84,42 +79,29 @@ public class PluginContextFactoryTests
         BuildFactory().Create(PluginId, "data", NullLogger.Instance, capabilities);
 
     [Fact]
-    public void Create_AllThreeHooksDeclared_AllThreeNonNull_FactoriesCalledWithPluginId()
+    public void Create_AudioToolsHookDeclared_AudioToolsNonNull_FactoryCalledWithPluginId()
     {
         IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
-        IPluginMusicAnalysisWriter analysisWriter = Mock.Of<IPluginMusicAnalysisWriter>();
         _audioToolsFactory.Setup(f => f.CreateFor(PluginId, "data")).Returns(audioTools);
-        _analysisWriterFactory.Setup(f => f.CreateFor(PluginId)).Returns(analysisWriter);
 
-        PluginCapabilities capabilities = new()
-        {
-            Hooks = ["audioTools", "derivedAudio", "musicAnalysisWrite"],
-        };
-
-        IPluginContext context = Create(capabilities);
+        IPluginContext context = Create(new PluginCapabilities { Hooks = ["audioTools"] });
 
         Assert.Same(audioTools, context.AudioTools);
-        Assert.Same(_derivedAudio.Object, context.DerivedAudio);
-        Assert.Same(analysisWriter, context.MusicAnalysisWriter);
         _audioToolsFactory.Verify(f => f.CreateFor(PluginId, "data"), Times.Once);
-        _analysisWriterFactory.Verify(f => f.CreateFor(PluginId), Times.Once);
     }
 
     [Fact]
-    public void Create_NoHooksDeclared_AllThreeNull_FactoriesNeverCalled()
+    public void Create_NoHooksDeclared_AudioToolsNull_FactoryNeverCalled()
     {
         PluginCapabilities capabilities = new() { Hooks = [] };
 
         IPluginContext context = Create(capabilities);
 
         Assert.Null(context.AudioTools);
-        Assert.Null(context.DerivedAudio);
-        Assert.Null(context.MusicAnalysisWriter);
         _audioToolsFactory.Verify(
             f => f.CreateFor(It.IsAny<Ulid>(), It.IsAny<string>()),
             Times.Never
         );
-        _analysisWriterFactory.Verify(f => f.CreateFor(It.IsAny<Ulid>()), Times.Never);
     }
 
     /// <summary>
@@ -133,10 +115,7 @@ public class PluginContextFactoryTests
     [Fact]
     public void Create_WithoutTheAudioToolsHook_ThereIsNothingToRenderWith()
     {
-        PluginCapabilities capabilities = new()
-        {
-            Hooks = ["derivedAudio", "musicAnalysisWrite", "lyricsWrite", "scheduledTask"],
-        };
+        PluginCapabilities capabilities = new() { Hooks = ["lyricsWrite", "scheduledTask"] };
 
         IPluginContext context = Create(capabilities);
 
@@ -147,20 +126,25 @@ public class PluginContextFactoryTests
         );
     }
 
+    /// <summary>
+    /// ABI 13.0 took the server's own analysis store and its two hooks away. A
+    /// plugin built against 12 can still name them in its manifest: the names
+    /// mean nothing now, and the plugin gets its context with what is left.
+    /// </summary>
     [Fact]
-    public void Create_OnlyAudioToolsHookDeclared_OnlyAudioToolsNonNull()
+    public void Create_WithTheHooksAbiThirteenRemoved_StillBuildsAContext()
     {
         IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
         _audioToolsFactory.Setup(f => f.CreateFor(PluginId, "data")).Returns(audioTools);
 
-        PluginCapabilities capabilities = new() { Hooks = ["audioTools"] };
+        PluginCapabilities capabilities = new()
+        {
+            Hooks = ["audioTools", "derivedAudio", "musicAnalysisWrite"],
+        };
 
         IPluginContext context = Create(capabilities);
 
         Assert.Same(audioTools, context.AudioTools);
-        Assert.Null(context.DerivedAudio);
-        Assert.Null(context.MusicAnalysisWriter);
-        _analysisWriterFactory.Verify(f => f.CreateFor(It.IsAny<Ulid>()), Times.Never);
     }
 
     [Fact]
@@ -172,7 +156,6 @@ public class PluginContextFactoryTests
         IPluginContext context = Create(new PluginCapabilities { Hooks = ["lyricsWrite"] });
 
         Assert.Same(lyrics, context.Lyrics);
-        Assert.Null(context.MusicAnalysisWriter);
     }
 
     [Fact]

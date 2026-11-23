@@ -20,7 +20,6 @@ using NoMercy.Database;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
-using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Quotas;
@@ -48,10 +47,7 @@ public class PluginAudioToolsFactoryTests
         services.AddSingleton(new Mock<IProcessRunner>().Object);
         services.AddSingleton(new Mock<IStorage>().Object);
         services.AddSingleton(new Mock<IStorageDriver>().Object);
-        services.AddKeyedSingleton("derived-audio", new Mock<IStorage>().Object);
-        services.AddSingleton(new Mock<IDerivedAudioStore>().Object);
         services.AddSingleton(new Mock<IFfmpegCapabilityProbe>().Object);
-        services.AddSingleton(new Mock<IPluginMusicAnalysisWriterFactory>().Object);
         services.AddSingleton(new Mock<IDbContextFactory<MediaContext>>().Object);
         services.AddSingleton<ILogger<PluginAudioTools>>(NullLogger<PluginAudioTools>.Instance);
 
@@ -132,10 +128,7 @@ public class PluginAudioToolsFactoryTests
             services.AddSingleton(runner.Object);
             services.AddSingleton(storage.Object);
             services.AddSingleton<IStorageDriver>(new LocalStorageDriver());
-            services.AddKeyedSingleton("derived-audio", new Mock<IStorage>().Object);
-            services.AddSingleton(new Mock<IDerivedAudioStore>().Object);
             services.AddSingleton(new Mock<IFfmpegCapabilityProbe>().Object);
-            services.AddSingleton(new Mock<IPluginMusicAnalysisWriterFactory>().Object);
             services.AddSingleton(new Mock<IDbContextFactory<MediaContext>>().Object);
             services.AddSingleton<ILogger<PluginAudioTools>>(NullLogger<PluginAudioTools>.Instance);
             services.AddSingleton(new PluginQuotaMeter(new HalfAKilobyte(), TimeProvider.System));

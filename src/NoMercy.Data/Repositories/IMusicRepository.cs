@@ -46,28 +46,6 @@ public interface IMusicRepository
     Task<Track?> GetTrackWithIncludesAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
-    /// Audio analysis for the named tracks. Tracks without a completed analysis
-    /// are absent from the result rather than returned with null readings, so a
-    /// caller can tell "not measured" from "measured as zero".
-    /// </summary>
-    Task<List<TrackAudioAnalysis>> GetTrackAudioAnalysisAsync(
-        IReadOnlyCollection<Guid> trackIds,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// The base analysis alongside the automix plugin's DJ record and stem
-    /// files for the named tracks — three queries, each scoped the same way
-    /// <see cref="GetTrackAudioAnalysisAsync" /> is: an Ok base row, an Ok DJ
-    /// row, and every stem row regardless of state (a stem file either
-    /// exists or it doesn't; there is no in-between to filter on).
-    /// </summary>
-    Task<TrackAnalysisBundle> GetTrackAnalysisBundleAsync(
-        IReadOnlyCollection<Guid> trackIds,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
     /// Stores the lyrics of a track with where the text came from
     /// (<paramref name="source" />, a <see cref="LyricsSources" /> value) and
     /// where the timing came from (<paramref name="timing" />, a

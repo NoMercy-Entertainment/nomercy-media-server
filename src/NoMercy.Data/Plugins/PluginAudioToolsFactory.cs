@@ -17,7 +17,6 @@ using NoMercy.Database;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
-using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Quotas;
@@ -29,14 +28,12 @@ namespace NoMercy.Data.Plugins;
 /// Builds a <see cref="PluginAudioTools" /> bound to one plugin's id. A
 /// singleton holding the collaborators every instance needs.
 /// <para>
-/// Unlike <see cref="PluginMusicAnalysisWriterFactory" />, the instances are
-/// cached per plugin rather than created per call: the one-ffmpeg-at-a-time
-/// guard is a field on the instance, and a guard a caller can get a fresh
-/// copy of guards nothing.
+/// The instances are cached per plugin rather than created per call: the
+/// one-ffmpeg-at-a-time guard is a field on the instance, and a guard a caller
+/// can get a fresh copy of guards nothing.
 /// </para>
 /// </summary>
 /// <param name="storage">The default, library-scoped storage: track files, and the ffmpeg binary's own presence.</param>
-/// <param name="derivedStorage">Scoped to the derived-audio root, for stem scratch files and derived inputs.</param>
 /// <param name="quotas">The plugin platform's disk meter, which a render's files are counted against. Null on a host that meters nothing.</param>
 /// <param name="alignModelInstaller">Fetches the lyricsalign model the first time a graph names it. Null on a host that installs nothing.</param>
 /// <param name="stemsplitSources">Chooses RoFormer or Spleeter for every plugin's stem splits on this machine.</param>
@@ -46,9 +43,6 @@ public class PluginAudioToolsFactory(
     IProcessRunner processRunner,
     IStorage storage,
     IStorageDriver storageDriver,
-    [FromKeyedServices("derived-audio")] IStorage derivedStorage,
-    IDerivedAudioStore store,
-    IPluginMusicAnalysisWriterFactory writerFactory,
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
     IStemsplitSourceSelector stemsplitSources,
@@ -69,9 +63,6 @@ public class PluginAudioToolsFactory(
                 processRunner,
                 storage,
                 storageDriver,
-                derivedStorage,
-                store,
-                writerFactory,
                 contextFactory,
                 capabilityProbe,
                 stemsplitSources,

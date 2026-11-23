@@ -30,13 +30,6 @@ namespace NoMercy.Data.Services;
 /// an unchecked path would be worse than the broken value it replaced.
 /// </para>
 /// <para>
-/// A repaired track also has its analysis verdict reset to
-/// <see cref="AudioAnalysisState.Pending"/> in the same unit of work. Those
-/// tracks carry a <c>Failed</c> verdict at the current analyzer version, which
-/// both the sweep query and the job's own "already done" check read as an
-/// answer; without the reset the row would be correct and still never analysed.
-/// </para>
-/// <para>
 /// Libraries on a remote driver are left alone in practice: their
 /// <c>HostFolder</c> is a driver key, and the existence check here is answered
 /// by the local driver, which will not find such a key and so never rewrites the
@@ -162,15 +155,13 @@ public class DoubledHostFolderRepair(
             }
         }
 
-        int verdictsReset = 0;
-
         // The save is short and bounded, and it is why the loop above stops
         // early: cancelling it too would throw the decided repairs away and
         // turn the early stop into the very loss it exists to prevent, so the
         // token is deliberately not passed on.
         if (repairs.Count > 0)
         {
-            verdictsReset = await ApplyAsync(mediaContext, repairs);
+            await ApplyAsync(mediaContext, repairs);
         }
 
         int otherRepairs = await RepairOtherTablesAsync(mediaContext, cancellationToken);
@@ -189,14 +180,13 @@ public class DoubledHostFolderRepair(
             || leftAloneErrored > 0
         )
             logger.LogInformation(
-                "Doubled host folder sweep: {Repaired} repaired, {VerdictsReset} analysis verdicts reset, "
+                "Doubled host folder sweep: {Repaired} repaired, "
                     + "{StoredPathResolves} left alone because the stored path resolves, "
                     + "{FileMissing} left alone because the repaired path does not, "
                     + "{HalvesDiffer} left alone because the halves differ, "
                     + "{Errored} left alone after an error",
                 [
                     repairs.Count,
-                    verdictsReset,
                     leftAloneStoredPathResolves,
                     leftAloneFileMissing,
                     leftAloneHalvesDiffer,
@@ -355,14 +345,8 @@ public class DoubledHostFolderRepair(
 
     private sealed record FolderPath<TId>(TId Id, string HostFolder, string? Filename);
 
-    /// <summary>
-    /// Writes the repaired folders and resets the analysis verdict of every
-    /// repaired track in one save. Both halves belong together: a row whose path
-    /// is right but whose verdict still says Failed at this analyzer version is
-    /// never selected again, so the repair would fix the symptom the owner sees
-    /// and not the one he reported.
-    /// </summary>
-    private static async Task<int> ApplyAsync(
+    /// <summary>Writes the repaired folders in one save.</summary>
+    private static async Task ApplyAsync(
         MediaContext mediaContext,
         Dictionary<Guid, string> repairs
     )
@@ -376,21 +360,7 @@ public class DoubledHostFolderRepair(
         foreach (Track track in tracks)
             track.HostFolder = repairs[track.Id];
 
-        List<TrackAudioAnalysis> verdicts = await mediaContext
-            .TrackAudioAnalysis.Where(analysis =>
-                trackIds.Contains(analysis.TrackId) && analysis.State != AudioAnalysisState.Pending
-            )
-            .ToListAsync();
-
-        foreach (TrackAudioAnalysis verdict in verdicts)
-        {
-            verdict.State = AudioAnalysisState.Pending;
-            verdict.FailureReason = null;
-        }
-
         await mediaContext.SaveChangesAsync();
-
-        return verdicts.Count;
     }
 
     /// <summary>The three stored columns the decision needs, and nothing else.</summary>

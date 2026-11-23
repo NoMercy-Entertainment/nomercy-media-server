@@ -26,9 +26,6 @@ namespace NoMercy.Data.Plugins;
 /// <param name="ModelId">The model part of a stem's producer version: <c>spleeter-2stems-f16</c>, <c>roformer-full</c>.</param>
 public sealed record StemsplitSource(StemsplitEngine Engine, string Options, string ModelId)
 {
-    /// <summary>The engine as the stem register stores it: <c>spleeter</c> or <c>roformer</c>.</summary>
-    public string EngineName => StemEngineNames.Of(Engine);
-
     /// <summary>The server's Spleeter model. Computed on every read: the model name is configuration.</summary>
     public static StemsplitSource Spleeter =>
         new(

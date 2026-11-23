@@ -49,9 +49,6 @@ public interface IQueueTaskRepository
         CancellationToken cancellationToken = default
     );
 
-    /// <summary>Rows still queued on the music queue that are audio-analysis work.</summary>
-    Task<int> CountQueuedMusicAnalysisAsync(CancellationToken cancellationToken = default);
-
     /// <summary>Whether any row currently sits on the named queue.</summary>
     Task<bool> QueueExistsAsync(string queueName, CancellationToken cancellationToken = default);
 

@@ -30,22 +30,7 @@ public class RetryIncompleteEncodeDispatchTests
         IIncompleteEncodeRepository repository,
         IJobDispatcher dispatcher
     ) =>
-        new(
-            null!,
-            null!,
-            null!,
-            null!,
-            repository,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            dispatcher,
-            null!
-        )
+        new(null!, null!, null!, repository, null!, null!, null!, null!, null!, dispatcher, null!)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };

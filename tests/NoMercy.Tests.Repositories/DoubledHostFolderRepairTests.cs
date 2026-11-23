@@ -19,7 +19,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.Artists;
-using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Releases;
 using NoMercy.NmSystem.Domain;
@@ -43,7 +42,6 @@ public class DoubledHostFolderRepairTests : IDisposable
     private const string TrackFile = "/03. Paper Lanterns.flac";
     private const string LinuxAlbumFolder = "/mnt/vault/music/Nine Vaults/Paper Lanterns";
     private const string DoubledLinuxAlbumFolder = LinuxAlbumFolder + LinuxAlbumFolder;
-    private const int AnalyzerVersion = 3;
 
     private static readonly Ulid DriverId = Ulid.NewUlid();
     private static readonly Ulid FolderId = Ulid.NewUlid();
@@ -84,7 +82,6 @@ public class DoubledHostFolderRepairTests : IDisposable
                 Id = LibraryId,
                 Title = "Music",
                 Type = MediaTypes.MusicMediaType,
-                AnalyzeAudio = true,
             }
         );
         ctx.SaveChanges();
@@ -121,16 +118,8 @@ public class DoubledHostFolderRepairTests : IDisposable
             NullLogger<DoubledHostFolderRepair>.Instance
         );
 
-    /// <summary>
-    /// One track in the music library, optionally carrying the verdict the
-    /// affected rows really have: Failed, at the analyzer version that is
-    /// current, which every "needs analysis" check reads as an answer.
-    /// </summary>
-    private async Task<Guid> AddTrack(
-        string? hostFolder,
-        string? filename = TrackFile,
-        AudioAnalysisState? verdict = null
-    )
+    /// <summary>One track in the music library.</summary>
+    private async Task<Guid> AddTrack(string? hostFolder, string? filename = TrackFile)
     {
         Guid trackId = Guid.NewGuid();
 
@@ -147,18 +136,6 @@ public class DoubledHostFolderRepairTests : IDisposable
             }
         );
         ctx.LibraryTrack.Add(new(LibraryId, trackId));
-
-        if (verdict is not null)
-            ctx.TrackAudioAnalysis.Add(
-                new()
-                {
-                    TrackId = trackId,
-                    AnalyzerVersion = AnalyzerVersion,
-                    State = verdict.Value,
-                    FailureReason = "no file at the doubled path",
-                    AnalyzedAt = DateTime.UtcNow,
-                }
-            );
 
         await ctx.SaveChangesAsync();
         return trackId;
@@ -321,14 +298,6 @@ public class DoubledHostFolderRepairTests : IDisposable
         (await ctx.Metadata.CountAsync()).Should().Be(0);
     }
 
-    private async Task<List<Guid>> TracksNeedingAnalysis()
-    {
-        await using MediaContext ctx = new(_options);
-        return await AudioAnalysisQueries
-            .TracksNeedingAnalysis(ctx, [LibraryId], AnalyzerVersion)
-            .ToListAsync();
-    }
-
     [Fact]
     public async Task Collapses_a_doubled_host_folder_when_the_file_is_there()
     {
@@ -450,45 +419,6 @@ public class DoubledHostFolderRepairTests : IDisposable
 
         repaired.Should().Be(0);
         (await ReadHostFolder()).Should().Be("/music/music");
-    }
-
-    /// <summary>
-    /// The affected tracks already carry a Failed verdict at the current
-    /// analyzer version, which both the sweep query and the job's own check read
-    /// as an answer. Without the reset the row would be correct and still never
-    /// analysed — the bug the owner reported.
-    /// </summary>
-    [Fact]
-    public async Task Resets_the_verdict_of_a_repaired_track_so_it_is_analysed_again()
-    {
-        Guid trackId = await AddTrack(DoubledAlbumFolder, verdict: AudioAnalysisState.Failed);
-
-        (await TracksNeedingAnalysis()).Should().BeEmpty();
-
-        await BuildRepair(Driver(AlbumFolder + TrackFile)).RunAsync(CancellationToken.None);
-
-        (await TracksNeedingAnalysis()).Should().ContainSingle().Which.Should().Be(trackId);
-
-        await using MediaContext ctx = new(_options);
-        TrackAudioAnalysis verdict = await ctx.TrackAudioAnalysis.AsNoTracking().SingleAsync();
-        verdict.State.Should().Be(AudioAnalysisState.Pending);
-        verdict.FailureReason.Should().BeNull();
-    }
-
-    /// <summary>
-    /// A verdict is an answer about a file the row really addresses; only a row
-    /// this sweep moved has reason to be measured again.
-    /// </summary>
-    [Fact]
-    public async Task Leaves_the_verdict_of_a_track_it_did_not_repair_alone()
-    {
-        await AddTrack(AlbumFolder, verdict: AudioAnalysisState.Failed);
-
-        await BuildRepair(Driver(AlbumFolder + TrackFile)).RunAsync(CancellationToken.None);
-
-        await using MediaContext ctx = new(_options);
-        TrackAudioAnalysis verdict = await ctx.TrackAudioAnalysis.AsNoTracking().SingleAsync();
-        verdict.State.Should().Be(AudioAnalysisState.Failed);
     }
 
     /// <summary>

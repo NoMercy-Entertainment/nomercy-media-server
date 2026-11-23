@@ -16,8 +16,9 @@
 - [`plugins/plugin-info.md`](plugins/plugin-info.md) — what the dashboard's
   plugin info says about where a plugin came from and the grants it holds,
   and how one grant is taken back.
-- [`plugins/music-analysis.md`](plugins/music-analysis.md) — how a plugin
-  computes and stores the DJ analysis of a track.
+- [`plugins/audio-tools.md`](plugins/audio-tools.md) — how a plugin runs
+  the server's ffmpeg over a track and keeps what a graph renders, and what
+  ABI 13.0 took out of the server (its own music analysis).
 - [`plugins/music-playback.md`](plugins/music-playback.md) — how a plugin
   follows what a listener plays, puts the upcoming tracks in another order
   and supplies the audio that joins two tracks, and what the players are

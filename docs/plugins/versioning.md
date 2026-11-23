@@ -38,9 +38,15 @@ server ABI the plugin can run on. The server checks it at install and at load
 The usual grace is one major: a plugin built against the previous major keeps
 loading, because a major mostly removes members it may never have called.
 
-ABI 12 has no grace. `PluginAbi.Oldest` is 12.0, so a plugin built against 11
-is refused. ABI 12 renamed the SDK assembly and every namespace, and nothing
-built against 11 resolves a single type. See [migration](migration.md).
+ABI 13 keeps that grace: `PluginAbi.Oldest` is 12.0, so a plugin built against
+12 loads on a 13 server. ABI 13 removed the server's own music analysis and
+the SDK members that existed only for it; a plugin that called one of them
+has to be rebuilt, and [audio-tools.md](audio-tools.md) lists what went and
+what to use now.
+
+ABI 12 had no grace, and a plugin built against 11 is still refused. ABI 12
+renamed the SDK assembly and every namespace, and nothing built against 11
+resolves a single type. See [migration](migration.md).
 
 ## Which targetAbi to set
 
@@ -69,7 +75,7 @@ Fix it one of two ways:
 Reference the SDK by major only:
 
 ```xml
-<PackageReference Include="NoMercy.PluginSdk.Abstractions" Version="12.*" />
+<PackageReference Include="NoMercy.PluginSdk.Abstractions" Version="13.*" />
 ```
 
 A minor only adds, so pinning one makes every plugin re-pin on a release that

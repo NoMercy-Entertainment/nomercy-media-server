@@ -42,17 +42,12 @@ public class PluginIsolationFitTests
     }
 
     [Fact]
-    public void AMusicAnalysisPluginWithRestButtons_NamesEveryFacadeAndItsControllers()
+    public void AnAudioPluginWithRestButtons_NamesEveryFacadeAndItsControllers()
     {
         PluginIsolationVerdict verdict = _fit.For(
             new PluginCapabilities
             {
-                Hooks =
-                [
-                    PluginHookCapability.AudioTools,
-                    PluginHookCapability.DerivedAudio,
-                    PluginHookCapability.MusicAnalysisWrite,
-                ],
+                Hooks = [PluginHookCapability.AudioTools, PluginHookCapability.LyricsWrite],
                 Rest = true,
             }
         );
@@ -60,11 +55,7 @@ public class PluginIsolationFitTests
         verdict.CanRunOutOfProcess.Should().BeFalse();
         verdict
             .Facades.Should()
-            .BeEquivalentTo(
-                nameof(IPluginContext.AudioTools),
-                nameof(IPluginContext.DerivedAudio),
-                nameof(IPluginContext.MusicAnalysisWriter)
-            );
+            .BeEquivalentTo(nameof(IPluginContext.AudioTools), nameof(IPluginContext.Lyrics));
         verdict.Controllers.Should().BeTrue();
     }
 

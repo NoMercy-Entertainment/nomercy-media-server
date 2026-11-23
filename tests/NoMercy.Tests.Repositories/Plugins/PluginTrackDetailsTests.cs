@@ -12,7 +12,6 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Data.Plugins;
 using NoMercy.Database;
@@ -249,7 +248,7 @@ public sealed class PluginTrackDetailsTests : IDisposable
             .Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        return new(factory.Object, NullLogger<PluginMusicQuery>.Instance);
+        return new(factory.Object);
     }
 
     private Album Album(Guid id, string name, int year) =>

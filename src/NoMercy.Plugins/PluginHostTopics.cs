@@ -38,8 +38,16 @@ internal static class PluginHostTopics
         StringComparer.Ordinal
     );
 
+    /// <summary>
+    /// A topic the host published until ABI 13.0, when music analysis left
+    /// the server. It stays reserved: a plugin built against 12 may still
+    /// listen for it, and a plugin that could publish it now would be taken
+    /// for the server.
+    /// </summary>
+    private const string RetiredMusicAnalysisCompleted = "music.analysis.completed";
+
     private static readonly FrozenSet<string> Reserved = FrozenSet.ToFrozenSet(
-        [PluginTopics.MusicAnalysisCompleted, PluginTopics.LyricsRequested, .. MusicPlayback],
+        [RetiredMusicAnalysisCompleted, PluginTopics.LyricsRequested, .. MusicPlayback],
         StringComparer.Ordinal
     );
 
