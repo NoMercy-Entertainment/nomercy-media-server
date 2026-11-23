@@ -121,6 +121,13 @@ public class MusicPlayerState
     [JsonIgnore]
     public bool CrossfadeSignalSent { get; set; }
 
+    // Counts the times the upcoming tracks were put in another order while the
+    // same track played. MusicPlaybackService reads it so that a broadcast
+    // whose only news is the new order is never dropped as an echo of the one
+    // before it.
+    [JsonIgnore]
+    public int QueueVersion { get; set; }
+
     // Set to true by CrossfadeStartCommand; suppresses server auto-advance during the
     // client's crossfade window.  Cleared by CrossfadeCompleteCommand or the safety timeout.
     [JsonIgnore]

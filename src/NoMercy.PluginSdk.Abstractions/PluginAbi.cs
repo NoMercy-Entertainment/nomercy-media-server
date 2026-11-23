@@ -75,6 +75,9 @@ public static class PluginAbi
     // PluginMusicPlaybackQueueChanged, PluginMusicPlaybackDeviceChanged,
     // PluginMusicPlaybackModeChanged): what a listener plays, told to a plugin that holds
     // player.state. New constants and new types only.
+    // 12.14 also added IPluginPlayer.Music (IPluginMusicPlayer, a default member that refuses
+    // on a host without one) with PluginMusicPlayback and PluginMusicQueueAnswer: what plays
+    // for a named listener, and the listener's upcoming tracks moved or put in a new order.
     public static Version Current { get; } = new(12, 14);
 
     /// <summary>

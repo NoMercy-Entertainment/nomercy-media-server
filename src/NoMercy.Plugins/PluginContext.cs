@@ -223,7 +223,18 @@ public class PluginContext : IPluginContext
         // calling Hub.PushAsync there should reach nobody rather than crash.
         Hub = hub ?? new NullPluginHubContext();
 
-        Player = new PluginPlayer(pluginId, Hub, grants);
+        // The music player is the server's and is built after the plugins, so
+        // it is asked for at each call like the broker above.
+        Player = new PluginPlayer(
+            pluginId,
+            Hub,
+            grants,
+            new PluginMusicPlayer(
+                pluginId,
+                broker,
+                () => services.GetService(typeof(IPluginMusicPlayerHost)) as IPluginMusicPlayerHost
+            )
+        );
 
         HttpClient = PluginHttpClientFactory.Create(
             capabilities,

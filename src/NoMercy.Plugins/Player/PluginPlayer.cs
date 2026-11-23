@@ -28,13 +28,30 @@ namespace NoMercy.PluginSdk.Player;
 /// rather than being told it played something it did not.
 /// </para>
 /// </summary>
-public class PluginPlayer(Ulid pluginId, IPluginHubContext hub, IPluginGrants grants)
-    : IPluginPlayer
+public class PluginPlayer(
+    Ulid pluginId,
+    IPluginHubContext hub,
+    IPluginGrants grants,
+    IPluginMusicPlayer? music = null
+) : IPluginPlayer
 {
     /// <summary>The message types a client listens for on the plugin channel.</summary>
     public const string PlayMessage = "player.play";
     public const string EnqueueMessage = "player.enqueue";
     public const string ControlMessage = "player.control";
+
+    /// <summary>
+    /// The server's own music player. Refused by name on a host that built
+    /// this player without one.
+    /// </summary>
+    public IPluginMusicPlayer Music =>
+        music
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                pluginId.ToString(),
+                "IPluginContext.Player.Music"
+            )
+        );
 
     public Task PlayAsync(PluginPlaybackSource source, CancellationToken ct = default) =>
         SendSource(PlayMessage, source, ct);

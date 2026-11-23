@@ -1,6 +1,7 @@
 # Following and shaping music playback
 
-How a plugin learns what a listener plays. A scrobbler, a plugin that shows
+How a plugin learns what a listener plays and puts the listener's upcoming
+tracks in another order. A scrobbler, a plugin that shows
 something in time with the music, a station that follows what was played, a
 plugin that prepares something for the track that comes next: each needs to
 know that a track started, for whom, and what is queued behind it.
@@ -11,8 +12,8 @@ constant or a new type, so a plugin built against an older 12 keeps loading;
 a plugin that uses any of it declares `"targetAbi": "12.14"` and an older
 server refuses it with the standard ABI refusal.
 
-The server tells an in-process plugin. A plugin that runs in its own process
-does not receive host topics yet.
+All of it is for an in-process plugin. A plugin that runs in its own process
+does not receive host topics yet and has no `IPluginContext.Player`.
 
 ## Declaring the capability
 
@@ -85,3 +86,53 @@ The payloads, as they travel (camelCase JSON):
   after it, for every plugin, so hand long work to a task of your own.
 - **Topics are the server's word.** A plugin cannot publish them; a publish
   is refused.
+
+## Reading and arranging the upcoming tracks
+
+The server keeps every listener's music itself: the track, the position and
+the upcoming tracks. `IPluginContext.Player.Music` (`IPluginMusicPlayer`)
+reads that for a named listener and puts the upcoming tracks in another
+order, also for a listener who never opened the plugin's page.
+
+```json
+{
+  "capabilities": {
+    "hooks": ["player.state", "player.queue"]
+  }
+}
+```
+
+| member | needs | does |
+|---|---|---|
+| `GetPlaybackAsync(userId)` | `player.state` | what plays now as `PluginMusicPlayback` (track, device, playing or paused, position, queue, repeat, shuffle, list), or null when nothing plays |
+| `GetQueueAsync(userId)` | `player.queue` | the ids of the upcoming tracks, the next one first |
+| `MoveInQueueAsync(userId, trackId, position)` | `player.queue` | moves one queued track to another place; 0 is the front, a place past the end is the end |
+| `ReorderQueueAsync(userId, order)` | `player.queue` | puts all the upcoming tracks in a new order in one step |
+
+A call without the capability throws `PluginRefusedException` with the usual
+refusal. What the player's state allows is answered as a
+`PluginMusicQueueAnswer`:
+
+| answer | meaning |
+|---|---|
+| `Accepted` | the upcoming tracks are in the order asked for |
+| `NothingPlaying` | nothing plays for this listener |
+| `NotInQueue` | the track is not among the upcoming tracks, or the order names other tracks than the ones queued; nothing changed |
+| `TooLate` | the change would make another track the next one, and the players were already told what comes next (ten seconds before the end of the playing track); nothing changed |
+
+What to rely on:
+
+- **A plugin arranges, it does not choose the tracks.** It cannot add a track
+  the listener did not queue and cannot remove one. `ReorderQueueAsync` takes
+  exactly the tracks that are queued, each as often as it is queued.
+- **Move by track, not by index.** The queue shifts when a track ends, so a
+  place read a moment ago can be another track now. A track that is queued
+  more than once moves by its first place.
+- **One step, one update.** After a change the listener's players are sent
+  the new state once, so the queue shows in the new order everywhere, and
+  `music.playback.queue.changed` is said once with the whole new order. That
+  topic also reaches the plugin that made the change.
+- **What plays next is what is first.** The track at the front is what the
+  server plays after the playing one and what it tells the players to load.
+- **`IPluginPlayer.Queue` is not this.** That member arranges sources a
+  plugin plays itself on the caller's own player, and no host carries it.

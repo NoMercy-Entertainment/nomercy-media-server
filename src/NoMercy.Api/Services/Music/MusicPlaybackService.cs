@@ -653,6 +653,7 @@ public class MusicPlaybackService
             state.Time / BroadcastTimeBucketMs,
             nowMs,
             state.VolumePercentage,
+            state.QueueVersion,
             string.Join(
                 ',',
                 state
@@ -671,6 +672,7 @@ public class MusicPlaybackService
             && previousFingerprint.DeviceId == fingerprint.DeviceId
             && previousFingerprint.TimeBucket == fingerprint.TimeBucket
             && previousFingerprint.Volume == fingerprint.Volume
+            && previousFingerprint.QueueVersion == fingerprint.QueueVersion
             && previousFingerprint.DeviceVolumes == fingerprint.DeviceVolumes
             && nowMs - previousFingerprint.AtMs < BroadcastCoalesceWindowMs
         )
@@ -690,6 +692,10 @@ public class MusicPlaybackService
     // being demoted never heard it and kept playing indefinitely alongside
     // the new active one. Stoney, 2026-09-07, reproduced live by picking a
     // second TV from the device picker: "Only one TV should be playing."
+    //
+    // QueueVersion is there for the same reason: upcoming tracks put in
+    // another order change nothing else in the fingerprint, and the listener
+    // looks at that order.
     private readonly record struct BroadcastFingerprint(
         Guid? ItemId,
         bool PlayState,
@@ -697,6 +703,7 @@ public class MusicPlaybackService
         int TimeBucket,
         long AtMs,
         int Volume,
+        int QueueVersion,
         string DeviceVolumes
     );
 
@@ -755,7 +762,17 @@ public class MusicPlaybackService
         );
     }
 
-    private static PlaylistTrackDto? PeekNextTrack(MusicPlayerState state)
+    /// <summary>
+    /// True once the listener's players were told what comes after the playing
+    /// track, or have started the fade into it. They are loading that track,
+    /// so what comes next can no longer be changed under them.
+    /// </summary>
+    internal static bool NextTrackWasAnnounced(MusicPlayerState state)
+    {
+        return state.CrossfadeSignalSent || state.IsCrossfading;
+    }
+
+    internal static PlaylistTrackDto? PeekNextTrack(MusicPlayerState state)
     {
         if (state.Repeat == "one")
             return null; // Same track restarts, no crossfade
