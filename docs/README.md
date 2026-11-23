@@ -18,6 +18,10 @@
   and how one grant is taken back.
 - [`plugins/music-analysis.md`](plugins/music-analysis.md) — how a plugin
   computes and stores the DJ analysis of a track.
+- [`plugins/music-playback.md`](plugins/music-playback.md) — how a plugin
+  follows what a listener plays, puts the upcoming tracks in another order
+  and supplies the audio that joins two tracks, and what the players are
+  sent for such a join.
 - [`plugins/shelves-and-paging.md`](plugins/shelves-and-paging.md) — the
   app's grid, card, row and page for a plugin, and the paging contract the
   clients build against.

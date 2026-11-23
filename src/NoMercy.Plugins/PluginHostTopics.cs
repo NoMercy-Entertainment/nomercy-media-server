@@ -20,8 +20,26 @@ namespace NoMercy.PluginSdk;
 /// </summary>
 internal static class PluginHostTopics
 {
+    /// <summary>
+    /// What a listener plays. Personal, so each is delivered only to a plugin
+    /// that holds <see cref="PluginCapabilityNames.PlayerState" />.
+    /// </summary>
+    private static readonly FrozenSet<string> MusicPlayback = FrozenSet.ToFrozenSet(
+        [
+            PluginTopics.MusicPlaybackStarted,
+            PluginTopics.MusicPlaybackPaused,
+            PluginTopics.MusicPlaybackResumed,
+            PluginTopics.MusicPlaybackSeeked,
+            PluginTopics.MusicPlaybackStopped,
+            PluginTopics.MusicPlaybackQueueChanged,
+            PluginTopics.MusicPlaybackDeviceChanged,
+            PluginTopics.MusicPlaybackModeChanged,
+        ],
+        StringComparer.Ordinal
+    );
+
     private static readonly FrozenSet<string> Reserved = FrozenSet.ToFrozenSet(
-        [PluginTopics.MusicAnalysisCompleted, PluginTopics.LyricsRequested],
+        [PluginTopics.MusicAnalysisCompleted, PluginTopics.LyricsRequested, .. MusicPlayback],
         StringComparer.Ordinal
     );
 
@@ -29,4 +47,11 @@ internal static class PluginHostTopics
     public static readonly Ulid HostSender = Ulid.Empty;
 
     public static bool IsReserved(string topic) => Reserved.Contains(topic);
+
+    /// <summary>
+    /// The capability a plugin must hold to be handed this topic, or null for
+    /// a topic every plugin may hear.
+    /// </summary>
+    public static string? CapabilityFor(string topic) =>
+        MusicPlayback.Contains(topic) ? PluginCapabilityNames.PlayerState : null;
 }

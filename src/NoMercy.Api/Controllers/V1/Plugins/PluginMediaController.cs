@@ -14,7 +14,6 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.StaticFiles;
 using NoMercy.Api.Plugins;
 using NoMercy.Authorization;
 using NoMercy.Networking.Http;
@@ -46,8 +45,6 @@ public class PluginMediaController(
     IPluginManager plugins
 ) : BaseController
 {
-    private static readonly FileExtensionContentTypeProvider ContentTypes = Types();
-
     private static readonly string[] Forwarded =
     [
         "Content-Type",
@@ -193,21 +190,9 @@ public class PluginMediaController(
         if (stream is null)
             return NotFoundResponse("The file this link was minted for is no longer there.");
 
-        return new FileStreamResult(stream, ContentTypeOf(file)) { EnableRangeProcessing = true };
-    }
-
-    private static string ContentTypeOf(string file) =>
-        ContentTypes.TryGetContentType(file, out string? type) ? type : "application/octet-stream";
-
-    /// <summary>
-    /// The framework's table, with the one entry a recording needs corrected:
-    /// it maps .ts to a DLNA type no browser player knows.
-    /// </summary>
-    private static FileExtensionContentTypeProvider Types()
-    {
-        FileExtensionContentTypeProvider types = new();
-        types.Mappings[".ts"] = "video/mp2t";
-
-        return types;
+        return new FileStreamResult(stream, PluginMediaContentTypes.Of(file))
+        {
+            EnableRangeProcessing = true,
+        };
     }
 }

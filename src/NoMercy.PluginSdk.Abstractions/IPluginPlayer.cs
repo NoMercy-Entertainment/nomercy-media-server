@@ -59,6 +59,16 @@ public interface IPluginPlayer
         throw new PluginRefusedException(
             PluginRefusalMessages.FacadeNotOnThisHost(string.Empty, "IPluginContext.Player.Queue")
         );
+
+    /// <summary>
+    /// The server's own music player, for a named listener: what plays, and
+    /// the upcoming tracks in another order. A default member, so a host
+    /// without a music player says so at the call. Added in ABI 12.14.
+    /// </summary>
+    IPluginMusicPlayer Music =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(string.Empty, "IPluginContext.Player.Music")
+        );
 }
 
 /// <summary>

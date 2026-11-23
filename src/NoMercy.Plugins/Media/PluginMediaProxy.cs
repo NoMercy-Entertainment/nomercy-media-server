@@ -393,7 +393,15 @@ public partial class PluginMediaProxy(
             { UserId: var user } => UserLink(minter.Mint(pluginId, user, request, TicketLifetime)),
         };
 
-    private string UserLink(string ticket) => $"/api/v1/plugins/{pluginId}/media/{ticket}";
+    private string UserLink(string ticket) => UserRoute(pluginId, ticket);
+
+    /// <summary>
+    /// The address an account fetches a ticket of <paramref name="pluginId" />
+    /// at. Public for the server's own senders of a plugin's file, so the
+    /// route is written down once.
+    /// </summary>
+    public static string UserRoute(Ulid pluginId, string ticket) =>
+        $"/api/v1/plugins/{pluginId}/media/{ticket}";
 
     private string DeviceLink(string ticket) => $"/api/v1/plugins/{pluginId}/lan-media/{ticket}";
 

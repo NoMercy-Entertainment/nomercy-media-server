@@ -13,7 +13,7 @@
 
     <!-- Empty unless the caller (CI: -p:Version) gave a version; see build/LocalVersion.targets. -->
     <NmVersionGiven>$(Version)</NmVersionGiven>
-    <Version>0.1.676</Version>
+    <Version>0.1.677</Version>
 
     <!--
       The plugin packages version with the contract, not with the server. A
@@ -25,7 +25,7 @@
       together, because written twice they drift and the half that drifts is
       whichever one nobody is looking at.
     -->
-    <PluginPackageVersion>12.13.0</PluginPackageVersion>
+    <PluginPackageVersion>12.14.0</PluginPackageVersion>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
   </PropertyGroup>
