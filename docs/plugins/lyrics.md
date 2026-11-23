@@ -146,7 +146,7 @@ PluginFilterGraph graph = new(
     Complex: false
 );
 PluginAudioRunResult run = await context.AudioTools.RunFilterGraphAsync(
-    PluginAudioInput.Derived(vocalsStemKey),
+    PluginAudioInput.PluginFile(vocalsStemPath),
     graph,
     onStdOut: line => output.Append(line),
     onStdErr: null,

@@ -99,19 +99,6 @@ public class PluginMusicQueryTests : IDisposable
         context.SaveChanges();
     }
 
-    private static DerivedAudio NewDerivedAudioRow(string key) =>
-        new()
-        {
-            Key = key,
-            ContentType = "audio/opus",
-            Bytes = 10,
-            CreatedAt = DateTime.UtcNow,
-            LastUsedAt = DateTime.UtcNow,
-        };
-
-    private static string NewStorageKey() =>
-        Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-
     public void Dispose()
     {
         _connection.Dispose();

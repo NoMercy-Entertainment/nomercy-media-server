@@ -82,7 +82,6 @@ public class DoubledHostFolderRepairTests : IDisposable
                 Id = LibraryId,
                 Title = "Music",
                 Type = MediaTypes.MusicMediaType,
-                AnalyzeAudio = true,
             }
         );
         ctx.SaveChanges();

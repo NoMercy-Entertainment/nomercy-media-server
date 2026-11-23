@@ -9,20 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Database.Models.Music;
+namespace NoMercy.Data.Services;
 
-/// <summary>
-/// What part of the track a stem file covers. The retention query reads
-/// this, never the millisecond window, so "do we have what the policy wants"
-/// is one equality rather than arithmetic on durations.
-/// </summary>
-public enum StemCoverage
+public interface IRetiredDerivedAudioFolder
 {
-    Full = 0,
-
-    /// <summary>The first 20 % of the track: where a mix-in lands.</summary>
-    MixIn = 1,
-
-    /// <summary>The last 25 % of the track: where a mix-out lands.</summary>
-    MixOut = 2,
+    /// <summary>
+    /// Removes the folder the server once kept derived audio in, with all it
+    /// holds. Returns the bytes that were given back, or <c>null</c> when
+    /// there was no such folder.
+    /// </summary>
+    Task<long?> RemoveAsync(CancellationToken cancellationToken);
 }

@@ -809,6 +809,19 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IDoubledHostFolderRepair, DoubledHostFolderRepair>();
         services.AddHostedService<DoubledHostFolderRepairStartupService>();
 
+        // The folder the server kept derived audio in before music analysis
+        // left it. Scoped to the cache folder, so the removal can name nothing
+        // outside it.
+        services.AddSingleton<IRetiredDerivedAudioFolder>(sp =>
+        {
+            IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
+            Storage.Validation.StoragePathGuard guard = new([AppFiles.CachePath], driver);
+            return new RetiredDerivedAudioFolder(
+                new Storage.Drivers.Local.LocalStorage(driver, guard)
+            );
+        });
+        services.AddHostedService<RetiredDerivedAudioFolderStartupService>();
+
         // Before AddPluginSystem, so its null-object fallback stays a no-op.
         // This host maps /pluginHub, so a plugin's Hub.PushAsync reaches real
         // subscribers here rather than silently succeeding.

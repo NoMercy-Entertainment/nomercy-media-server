@@ -30,6 +30,20 @@ A plugin built against 12 that calls none of these keeps loading on a 13
 server. A manifest that still names `derivedAudio` or `musicAnalysisWrite`
 is accepted; the names mean nothing any more.
 
+What the update does to a server, once, on its first start:
+
+- the tables `TrackAudioAnalysis`, `TrackDjAnalysis`, `TrackStems` and
+  `DerivedAudio` and the column `Libraries.AnalyzeAudio` are dropped. The
+  server makes its usual backup before it migrates;
+- analysis jobs that were still waiting or had failed are taken out of the
+  queue, with the two schedules that fed them;
+- the folder `cache/derived` is deleted and the log says how many MB that
+  gave back. A plugin's own folder is not touched;
+- the saved `derivedAudioCapGb` setting is removed.
+
+A server rolled back to an older version gets the tables back empty and
+measures its music again: slow, not broken.
+
 ## Declaring the hook
 
 ```json

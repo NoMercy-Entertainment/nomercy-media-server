@@ -50,7 +50,7 @@ public interface IPluginContext
     IPluginLibraryQuery Library { get; }
 
     /// <summary>
-    /// Reading music and its audio analysis. Read-only, so it needs no
+    /// Reading the music library's tracks. Read-only, so it needs no
     /// capability, for the same reason <see cref="Library" /> needs none.
     ///
     /// Default null so a host built before this member still compiles, and so a
