@@ -54,12 +54,11 @@ runs:
           --output ./installer-payload
 
     - name: Verify app repo token
+      if: ${{ inputs.app-repo-token == '' }}
       shell: bash
       run: |
-        if [ -z "${{ inputs.app-repo-token }}" ]; then
-          echo "::error::app-repo-token is empty. The nomercy-app-web gh-pages checkout needs a valid PAT (org secret PAT); github.token cannot read that private repo."
-          exit 1
-        fi
+        echo "::error::app-repo-token is empty. The nomercy-app-web gh-pages checkout needs a valid PAT (org secret PAT); github.token cannot read that private repo."
+        exit 1
 
     - name: Pull App Files
       uses: actions/checkout@v5
@@ -78,7 +77,7 @@ runs:
         cp -a ./src/NoMercy.App/Resources/wwwroot/. ./src/NoMercy.App/wwwroot/
         rm -rf ./src/NoMercy.App/Resources/wwwroot
         echo "App files copied to wwwroot:"
-        find ./src/NoMercy.App/wwwroot -type f | head -20 || true
+        find ./src/NoMercy.App/wwwroot -type f | sed -n '1,20p'
 
     - name: Copy InfiniFrame.js to wwwroot
       shell: bash

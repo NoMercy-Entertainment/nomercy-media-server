@@ -42,13 +42,11 @@ runs:
       run: dotnet restore NoMercy.Server.sln
 
     - name: Verify app repo token
-      if: inputs.project == 'App'
+      if: ${{ inputs.project == 'App' && inputs.app-repo-token == '' }}
       shell: bash
       run: |
-        if [ -z "${{ inputs.app-repo-token }}" ]; then
-          echo "::error::app-repo-token is empty. The nomercy-app-web gh-pages checkout needs a valid PAT (org secret PAT); github.token cannot read that private repo."
-          exit 1
-        fi
+        echo "::error::app-repo-token is empty. The nomercy-app-web gh-pages checkout needs a valid PAT (org secret PAT); github.token cannot read that private repo."
+        exit 1
 
     - name: Pull App Files
       if: inputs.project == 'App'
