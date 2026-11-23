@@ -13,6 +13,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Music;
+using NoMercy.Api.Hubs;
 using NoMercy.Api.Hubs.Shared;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
@@ -32,6 +33,7 @@ public class MusicPlaybackService
     private readonly MusicActiveDeviceRegistry _activeDeviceRegistry;
     private readonly ILogger<MusicPlaybackService>? _logger;
     private readonly MusicPlaybackAnnouncer? _announcer;
+    private readonly MusicTransitionLinks? _transitionLinks;
     private static int PlayerStateEventId => Interlocked.Increment(ref field);
 
     public MusicPlaybackService(
@@ -41,7 +43,8 @@ public class MusicPlaybackService
         MusicActiveDeviceRegistry activeDeviceRegistry,
         IEventBus? eventBus = null,
         ILogger<MusicPlaybackService>? logger = null,
-        MusicPlaybackAnnouncer? announcer = null
+        MusicPlaybackAnnouncer? announcer = null,
+        MusicTransitionLinks? transitionLinks = null
     )
     {
         _stateManager = stateManager;
@@ -51,6 +54,7 @@ public class MusicPlaybackService
         _eventBus = eventBus;
         _logger = logger;
         _announcer = announcer;
+        _transitionLinks = transitionLinks;
     }
 
     private readonly ConcurrentDictionary<Guid, Timer> _timers = new();
@@ -63,7 +67,7 @@ public class MusicPlaybackService
     private readonly ConcurrentDictionary<Guid, BroadcastFingerprint> _lastBroadcastFingerprints =
         new();
     private const int TimerInterval = 100;
-    private const int CrossfadeLeewayMs = 10000; // Send PrepareCrossfade 10s before track end (gives time to buffer)
+    internal const int CrossfadeLeewayMs = 10000; // Send PrepareCrossfade 10s before track end (gives time to buffer)
     private const int BroadcastDebounceMs = 150;
     private const int MinPlayTimeForRecordMs = 10_000;
 
@@ -194,17 +198,11 @@ public class MusicPlaybackService
                         await PublishProgressEventAsync(user.Id, playerState);
                     }
 
-                    // Send crossfade signal to clients ~10s before track ends
-                    if (
-                        playerState.Time >= duration - CrossfadeLeewayMs
-                        && !playerState.CrossfadeSignalSent
-                    )
-                    {
-                        playerState.CrossfadeSignalSent = true;
-                        PlaylistTrackDto? nextItem = PeekNextTrack(playerState);
-                        if (nextItem != null)
-                            await SendPrepareCrossfadeSignal(user, nextItem);
-                    }
+                    // Audio a plugin offered for this join goes out first, so a
+                    // client that takes it has it before the crossfade signal.
+                    await SendDueTransitionAsync(user, playerState);
+
+                    await SendDueCrossfadeSignalAsync(user, playerState, duration);
 
                     if (playerState.Time >= duration)
                     {
@@ -455,8 +453,72 @@ public class MusicPlaybackService
 
         state.IsCrossfading = true;
         state.CrossfadeDeviceId = deviceId;
+        state.CrossfadeTrackId = state.CurrentItem?.Id;
+        state.CrossfadeHeldDeviceId = state.DeviceId;
         state.CrossfadeTimeout = DateTime.UtcNow.AddMilliseconds(
             fadeDurationMs + CrossfadeSafetyMarginMs
+        );
+    }
+
+    /// <summary>
+    /// Sends <c>PrepareCrossfade</c> to the user's clients once per track, ten seconds before
+    /// the track ends. A transition a plugin offered changes nothing here: this signal is sent
+    /// when and as it always was, and a client that took the transition ignores it.
+    /// </summary>
+    internal async Task SendDueCrossfadeSignalAsync(User user, MusicPlayerState state, int duration)
+    {
+        if (state.Time < duration - CrossfadeLeewayMs || state.CrossfadeSignalSent)
+            return;
+
+        state.CrossfadeSignalSent = true;
+        PlaylistTrackDto? nextItem = PeekNextTrack(state);
+        if (nextItem != null)
+            await SendPrepareCrossfadeSignal(user, nextItem);
+    }
+
+    /// <summary>
+    /// Sends <c>PrepareTransition</c> to the user's clients when a plugin offered audio for the
+    /// join out of the playing track and that track is within ten seconds of the offer's stop.
+    /// Once per offer. The link to the file is made here, for this user, at this moment.
+    /// </summary>
+    internal async Task SendDueTransitionAsync(User user, MusicPlayerState state)
+    {
+        if (MusicJoinRules.Due(state, CrossfadeLeewayMs) is not { } offer)
+            return;
+
+        PlaylistTrackDto? nextItem = offer.LeadsBackIntoItsTrack
+            ? state.CurrentItem
+            : PeekNextTrack(state);
+        string? url = _transitionLinks?.For(offer, user.Id);
+
+        if (nextItem is null || url is null)
+        {
+            // Nobody can be handed the file: this server mints no plugin links, or the
+            // listener cannot see the plugin. The crossfade of always happens instead.
+            state.Transition = null;
+            return;
+        }
+
+        offer.Sent = true;
+
+        await _clientMessenger.SendTo(
+            MusicHubMessages.PrepareTransition,
+            "musicHub",
+            user.Id,
+            new PrepareTransitionMessage
+            {
+                NextItem = nextItem,
+                Transition = new()
+                {
+                    Url = url,
+                    Mime = MusicTransitionLinks.MimeOf(offer.File),
+                    DurationMs = offer.DurationMs,
+                    OutgoingStopMs = offer.OutgoingStopMs,
+                    IncomingResumeMs = offer.IncomingResumeMs,
+                    Data = offer.Data is null ? null : new(offer.Data),
+                },
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            }
         );
     }
 
@@ -489,6 +551,16 @@ public class MusicPlaybackService
         // Locate the new track. It is in the upcoming playlist, or with repeat all and nothing
         // left to play it is the first played track, which PeekNextTrack named as the next one.
         PlaylistTrackDto? newTrack = state.Playlist.FirstOrDefault(t => t.Id == newTrackId);
+
+        // Or it is the track that already plays: audio that stood in for a stretch inside one
+        // track leads back into that track. Read so when such a transition was sent, or when
+        // the track is not also queued again and the id can mean nothing else.
+        if (
+            state.CurrentItem is { } playing
+            && playing.Id == newTrackId
+            && (newTrack is null || state.Transition is { Sent: true, LeadsBackIntoItsTrack: true })
+        )
+            return await GoOnWithThePlayingTrack(user, state, playing, positionMs);
         bool wrapsRound =
             newTrack is null
             && state.CurrentItem is not null
@@ -533,6 +605,50 @@ public class MusicPlaybackService
 
         await UpdatePlaybackState(user, state);
         StartPlaybackTimer(user);
+
+        return MusicCrossfadeCompletion.Completed;
+    }
+
+    /// <summary>
+    /// The join led back into the track that plays. The track stays; its position becomes the
+    /// one the player names, and the join is over.
+    /// </summary>
+    private async Task<MusicCrossfadeCompletion> GoOnWithThePlayingTrack(
+        User user,
+        MusicPlayerState state,
+        PlaylistTrackDto playing,
+        int positionMs
+    )
+    {
+        int durationMs = playing.Duration.ToMilliSeconds();
+        if (durationMs > 0 && positionMs > durationMs)
+            return MusicCrossfadeCompletion.PositionOutsideTrack;
+
+        RemoveTimer(user.Id);
+
+        if (positionMs > 0)
+        {
+            state.SetPosition(positionMs);
+            state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
+
+            // The server's clock ran on while the file played and can have passed the point
+            // where the crossfade signal goes out. Measured from the new position it is due
+            // again at the track's real end.
+            state.CrossfadeSignalSent = false;
+        }
+
+        state.IsCrossfading = false;
+        state.CrossfadeDeviceId = null;
+
+        // The transition that was played is done. One that was offered since, for the join
+        // into the next track, stays.
+        if (state.Transition is { Sent: true, LeadsBackIntoItsTrack: true })
+            state.Transition = null;
+
+        await UpdatePlaybackState(user, state);
+
+        if (state.PlayState)
+            StartPlaybackTimer(user);
 
         return MusicCrossfadeCompletion.Completed;
     }
@@ -627,6 +743,12 @@ public class MusicPlaybackService
 
     public async Task UpdatePlaybackState(User user, MusicPlayerState? state)
     {
+        // Every change to the state ends in this broadcast, so here is where a
+        // join that no longer fits it is let go: after a skip, a new list,
+        // another device.
+        if (state is not null)
+            MusicJoinRules.Reconcile(state);
+
         // Before the coalescing below: a broadcast that is dropped as an echo
         // can still carry a change a plugin has to hear.
         _announcer?.Observe(user.Id, state);
@@ -809,7 +931,11 @@ public class MusicPlaybackService
     /// </summary>
     internal static bool NextTrackWasAnnounced(MusicPlayerState state)
     {
-        return state.CrossfadeSignalSent || state.IsCrossfading;
+        MusicJoinRules.Reconcile(state);
+
+        return state.CrossfadeSignalSent
+            || state.IsCrossfading
+            || state.Transition is { Sent: true, LeadsBackIntoItsTrack: false };
     }
 
     internal static PlaylistTrackDto? PeekNextTrack(MusicPlayerState state)
@@ -828,13 +954,18 @@ public class MusicPlaybackService
 
     private async Task SendPrepareCrossfadeSignal(User user, PlaylistTrackDto nextItem)
     {
-        var payload = new
+        PrepareCrossfadeMessage payload = new()
         {
-            next_item = nextItem,
-            crossfade_duration_ms = 3000,
-            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            NextItem = nextItem,
+            CrossfadeDurationMs = 3000,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
         };
-        await _clientMessenger.SendTo("PrepareCrossfade", "musicHub", user.Id, payload);
+        await _clientMessenger.SendTo(
+            MusicHubMessages.PrepareCrossfade,
+            "musicHub",
+            user.Id,
+            payload
+        );
     }
 
     private void UpdateStateBasedOnRepeatMode(MusicPlayerState state, int currentIndex)

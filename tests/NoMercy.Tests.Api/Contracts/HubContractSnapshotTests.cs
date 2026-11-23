@@ -12,9 +12,12 @@
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
+using Newtonsoft.Json.Linq;
+using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Hubs;
 using NoMercy.Networking;
 using Xunit;
+using JsonPropertyAttribute = Newtonsoft.Json.JsonPropertyAttribute;
 
 namespace NoMercy.Tests.Api.Contracts;
 
@@ -117,6 +120,12 @@ public class HubContractSnapshotTests
         "StartPlaybackCommand(System.String, System.Nullable<System.Guid>, System.Nullable<System.Guid>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
+    private static readonly string[] MusicHubServerMessages =
+    [
+        "PrepareCrossfade { crossfade_duration_ms: System.Int32, next_item: NoMercy.Api.DTOs.Music.PlaylistTrackDto, timestamp: System.Int64 }",
+        "PrepareTransition { next_item: NoMercy.Api.DTOs.Music.PlaylistTrackDto, timestamp: System.Int64, transition: { data: json, duration_ms: System.Int32, incoming_resume_ms: System.Int32, mime: System.String, outgoing_stop_ms: System.Int32, url: System.String } }",
+    ];
+
     private static readonly string[] RipperHubMethods =
     [
         "GetDriveState(System.String) -> System.Threading.Tasks.Task<System.Object>",
@@ -173,6 +182,44 @@ public class HubContractSnapshotTests
         }
 
         return (type.FullName ?? type.Name).Replace('+', '.');
+    }
+
+    /// <summary>
+    /// The messages the music hub sends to a user's clients, each with the
+    /// fields its payload carries on the wire.
+    /// </summary>
+    private static string[] ActualMusicHubMessages()
+    {
+        return MusicHubMessages
+            .Payloads.Select(message => $"{message.Key} {DescribePayload(message.Value)}")
+            .OrderBy(line => line, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static string DescribePayload(Type payload)
+    {
+        IEnumerable<string> fields = payload
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(property => new
+            {
+                property.PropertyType,
+                Name = property.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName,
+            })
+            .Where(field => field.Name is not null)
+            .OrderBy(field => field.Name, StringComparer.Ordinal)
+            .Select(field => $"{field.Name}: {DescribeField(field.PropertyType)}");
+
+        return "{ " + string.Join(", ", fields) + " }";
+    }
+
+    // A part of a message that exists only to be sent is written out field by
+    // field. Anything else is named by its type, like a hub method's argument.
+    private static string DescribeField(Type type)
+    {
+        if (type == typeof(JRaw))
+            return "json";
+
+        return type == typeof(MusicTransitionDto) ? DescribePayload(type) : FormatType(type);
     }
 
     private static string[] ActualHubMethods(Type hubType)
@@ -238,6 +285,14 @@ public class HubContractSnapshotTests
     public void PluginHub_MatchesLockedContract() =>
         AssertHubContract(typeof(PluginHub), PluginHubMethods);
 
+    /// <summary>
+    /// What the server sends is as much a contract as what it accepts: a
+    /// field that is renamed or dropped here breaks every client that reads it.
+    /// </summary>
+    [Fact]
+    public void MusicHub_ServerMessages_MatchLockedContract() =>
+        Assert.Equal(MusicHubServerMessages, ActualMusicHubMessages());
+
     [Fact]
     public void RipperHub_MatchesLockedContract() =>
         AssertHubContract(typeof(RipperHub), RipperHubMethods);
@@ -280,9 +335,14 @@ public class HubContractSnapshotTests
         foreach (Type hubType in hubTypes)
             contracts.Add(hubType.Name, ActualHubMethods(hubType));
 
+        SortedDictionary<string, string[]> messages = new(StringComparer.Ordinal)
+        {
+            [nameof(MusicHub)] = ActualMusicHubMessages(),
+        };
+
         string json =
             JsonSerializer.Serialize(
-                new { hubs = contracts },
+                new { hubs = contracts, messages },
                 // LF like the committed file; the default is the OS newline, which fails on Windows.
                 new JsonSerializerOptions { WriteIndented = true, NewLine = "\n" }
             ) + "\n";

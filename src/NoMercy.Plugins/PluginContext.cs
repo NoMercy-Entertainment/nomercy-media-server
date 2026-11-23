@@ -232,7 +232,9 @@ public class PluginContext : IPluginContext
             new PluginMusicPlayer(
                 pluginId,
                 broker,
-                () => services.GetService(typeof(IPluginMusicPlayerHost)) as IPluginMusicPlayerHost
+                () => services.GetService(typeof(IPluginMusicPlayerHost)) as IPluginMusicPlayerHost,
+                dataFolderPath,
+                storage
             )
         );
 

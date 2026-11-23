@@ -78,6 +78,9 @@ public static class PluginAbi
     // 12.14 also added IPluginPlayer.Music (IPluginMusicPlayer, a default member that refuses
     // on a host without one) with PluginMusicPlayback and PluginMusicQueueAnswer: what plays
     // for a named listener, and the listener's upcoming tracks moved or put in a new order.
+    // IPluginMusicPlayer also takes audio for the join out of the playing track
+    // (OfferTransitionAsync, WithdrawTransitionAsync) as PluginMusicTransition, answered with
+    // PluginMusicTransitionAnswer; the server sends it to the listener's players in time.
     public static Version Current { get; } = new(12, 14);
 
     /// <summary>

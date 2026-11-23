@@ -147,7 +147,8 @@ public class MusicHubCrossfadeCompleteAtTests : IClassFixture<NoMercyApiFactory>
         User User,
         string ConnectionId,
         PlaylistTrackDto Next,
-        MusicPlayerState State
+        MusicPlayerState State,
+        TaskCompletionSource UntilTheTestEnds
     );
 
     private Session SeedFadingSession()
@@ -190,17 +191,24 @@ public class MusicHubCrossfadeCompleteAtTests : IClassFixture<NoMercyApiFactory>
         };
         _factory.Services.GetRequiredService<MusicPlayerStateManager>().UpdateState(userId, state);
         _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>().Set(userId, client);
-        _factory
-            .Services.GetRequiredService<MusicPlaybackService>()
-            .StartCrossfade(userId, deviceId, 3000);
+        MusicPlaybackService playback =
+            _factory.Services.GetRequiredService<MusicPlaybackService>();
+        playback.StartCrossfade(userId, deviceId, 3000);
 
-        return new(userId, user, connectionId, next, state);
+        // A completed crossfade starts the player's 100 ms tick, which moves
+        // the position these tests read. The tick skips a round when the
+        // state lock is taken, so it is held for as long as a test runs.
+        TaskCompletionSource untilTheTestEnds = new();
+        _ = playback.WithStateLockAsync(userId, () => untilTheTestEnds.Task);
+
+        return new(userId, user, connectionId, next, state, untilTheTestEnds);
     }
 
     private void Cleanup(Session session)
     {
         _factory.GetConnectedClients().Clients.TryRemove(session.ConnectionId, out _);
         _factory.Services.GetRequiredService<MusicPlaybackService>().RemoveTimer(session.UserId);
+        session.UntilTheTestEnds.TrySetResult();
         _factory.Services.GetRequiredService<MusicPlayerStateManager>().RemoveState(session.UserId);
         _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>().Remove(session.UserId);
         UserCache.Current.RemoveUser(session.User);

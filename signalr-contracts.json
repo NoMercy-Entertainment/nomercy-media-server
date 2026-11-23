@@ -143,5 +143,11 @@
       "SetTime(NoMercy.Api.Services.Video.VideoProgressRequest) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "StartPlaybackCommand(System.String, System.Object, System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E"
     ]
+  },
+  "messages": {
+    "MusicHub": [
+      "PrepareCrossfade { crossfade_duration_ms: System.Int32, next_item: NoMercy.Api.DTOs.Music.PlaylistTrackDto, timestamp: System.Int64 }",
+      "PrepareTransition { next_item: NoMercy.Api.DTOs.Music.PlaylistTrackDto, timestamp: System.Int64, transition: { data: json, duration_ms: System.Int32, incoming_resume_ms: System.Int32, mime: System.String, outgoing_stop_ms: System.Int32, url: System.String } }"
+    ]
   }
 }

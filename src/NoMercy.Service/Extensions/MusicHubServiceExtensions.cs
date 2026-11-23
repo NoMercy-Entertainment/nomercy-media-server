@@ -25,6 +25,7 @@ public static class MusicHubServiceExtensions
         services.AddSingleton<MusicPlayerStateManager>();
         services.AddSingleton<MusicActiveDeviceRegistry>();
         services.AddSingleton<MusicPlaybackAnnouncer>();
+        services.AddSingleton<MusicTransitionLinks>();
         services.AddSingleton<MusicPlaybackService>();
         services.AddSingleton<MusicPlaybackCommandHandler>();
         // What a plugin reads and arranges of a listener's music.

@@ -144,6 +144,22 @@ public class MusicPlayerState
     [JsonIgnore]
     public string? CrossfadeDeviceId { get; set; }
 
+    // The track that played and the device that held the session when CrossfadeStart came.
+    // The suppression counts only while both are still so: a skip or another device taking
+    // over ends it there and then, where it used to stand until its timeout. With a join of
+    // a minute or two that timeout held back the advance of a short track that followed.
+    // See MusicJoinRules.Reconcile.
+    [JsonIgnore]
+    public Guid? CrossfadeTrackId { get; set; }
+
+    [JsonIgnore]
+    public string? CrossfadeHeldDeviceId { get; set; }
+
+    // Audio a plugin offered for the join out of the playing track, until it was played or
+    // no longer fits what plays. See MusicJoinRules.
+    [JsonIgnore]
+    public MusicTransitionOffer? Transition { get; set; }
+
     // Proof-of-life clock for the active device (DeviceId above). Refreshed by
     // MusicHub.ReportPositionCommand while playing and by
     // MusicPlaybackService.StartPlaybackTimer on every (re)start of the ticking

@@ -66,4 +66,34 @@ public interface IPluginMusicPlayer
         IReadOnlyList<Guid> order,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Offers audio for the join out of the track that plays for a listener.
+    /// The server keeps one offer per listener and sends it to the listener's
+    /// players ten seconds before the playing track reaches the offer's stop.
+    /// <para>
+    /// The offer ends by itself when it no longer fits what plays: another
+    /// track starts or playback stops, the next track is no longer the one it
+    /// leads into, another device takes over, or the listener seeks to the
+    /// stop or past it. Each of those is said on a <c>music.playback</c>
+    /// topic, so a plugin that follows them knows when to offer again.
+    /// </para>
+    /// <para>
+    /// Needs <see cref="PluginCapabilityNames.PlayerQueue" /> and, because the
+    /// server serves the file, <see cref="PluginCapabilityNames.MediaProxy" />.
+    /// A file that is not in the plugin's own folder is refused.
+    /// </para>
+    /// </summary>
+    Task<PluginMusicTransitionAnswer> OfferTransitionAsync(
+        Guid userId,
+        PluginMusicTransition transition,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Takes back the offer this plugin made for a listener, if the server
+    /// still holds one. An offer the players were already sent is not taken
+    /// back from them. Needs <see cref="PluginCapabilityNames.PlayerQueue" />.
+    /// </summary>
+    Task WithdrawTransitionAsync(Guid userId, CancellationToken ct = default);
 }

@@ -13,14 +13,16 @@ using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Api.DTOs.Music;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
+using NoMercy.NmSystem.Extensions;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Player;
 
 namespace NoMercy.Api.Services.Music;
 
 /// <summary>
-/// The music player's answer to a plugin: what plays for a listener, and the
-/// listener's upcoming tracks put in another order.
+/// The music player's answer to a plugin: what plays for a listener, the
+/// listener's upcoming tracks put in another order, and audio taken for the
+/// join out of the track that plays.
 /// <para>
 /// A plugin arranges what the listener queued and nothing else. Every change
 /// keeps the same tracks, each as often as it was queued.
@@ -86,6 +88,118 @@ public sealed class PluginMusicPlayerHost(
         IReadOnlyList<Guid> order,
         CancellationToken ct = default
     ) => ArrangeAsync(userId, queue => InOrder(queue, order), ct);
+
+    public async Task<PluginMusicTransitionAnswer> OfferTransitionAsync(
+        Ulid pluginId,
+        Guid userId,
+        PluginMusicTransition transition,
+        CancellationToken ct = default
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+
+        PluginMusicTransitionAnswer answer = PluginMusicTransitionAnswer.NothingPlaying;
+
+        await playbackService.WithStateLockAsync(
+            userId,
+            () =>
+            {
+                if (stateManager.TryGetValue(userId, out MusicPlayerState? state))
+                    answer = Take(pluginId, state, transition);
+
+                return Task.CompletedTask;
+            }
+        );
+
+        return answer;
+    }
+
+    public async Task WithdrawTransitionAsync(
+        Ulid pluginId,
+        Guid userId,
+        CancellationToken ct = default
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+
+        await playbackService.WithStateLockAsync(
+            userId,
+            () =>
+            {
+                if (
+                    stateManager.TryGetValue(userId, out MusicPlayerState? state)
+                    && state.Transition?.PluginId == pluginId
+                )
+                    state.Transition = null;
+
+                return Task.CompletedTask;
+            }
+        );
+    }
+
+    /// <summary>
+    /// Keeps the transition on the listener's state when it fits what plays
+    /// there now, and says what stands in the way when it does not.
+    /// </summary>
+    private static PluginMusicTransitionAnswer Take(
+        Ulid pluginId,
+        MusicPlayerState state,
+        PluginMusicTransition transition
+    )
+    {
+        MusicJoinRules.Reconcile(state);
+
+        if (state.CurrentItem is not { } playing)
+            return PluginMusicTransitionAnswer.NothingPlaying;
+
+        if (playing.Id != transition.FromTrackId)
+            return PluginMusicTransitionAnswer.NotThePlayingTrack;
+
+        PlaylistTrackDto? into =
+            transition.ToTrackId == transition.FromTrackId
+                ? playing
+                : MusicPlaybackService.PeekNextTrack(state);
+        if (into?.Id != transition.ToTrackId)
+            return PluginMusicTransitionAnswer.NotTheNextTrack;
+
+        if (
+            IsPastTheEnd(transition.OutgoingStopMs, playing)
+            || IsPastTheEnd(transition.IncomingResumeMs, into)
+        )
+            return PluginMusicTransitionAnswer.OutsideTheTrack;
+
+        // The stop is behind, or the players are already busy with what comes
+        // next: a transition they were sent, or the crossfade itself.
+        if (
+            state.Time >= transition.OutgoingStopMs
+            || state.CrossfadeSignalSent
+            || state.IsCrossfading
+            || state.Transition is { Sent: true }
+        )
+            return PluginMusicTransitionAnswer.TooLate;
+
+        state.Transition = new()
+        {
+            PluginId = pluginId,
+            FromTrackId = transition.FromTrackId,
+            ToTrackId = transition.ToTrackId,
+            File = transition.File,
+            OutgoingStopMs = transition.OutgoingStopMs,
+            IncomingResumeMs = transition.IncomingResumeMs,
+            DurationMs = transition.DurationMs,
+            Data = transition.Data,
+            DeviceId = state.DeviceId,
+        };
+
+        return PluginMusicTransitionAnswer.Accepted;
+    }
+
+    private static bool IsPastTheEnd(int positionMs, PlaylistTrackDto track)
+    {
+        int durationMs = track.Duration.ToMilliSeconds();
+
+        return durationMs > 0 && positionMs > durationMs;
+    }
 
     /// <summary>
     /// The queued tracks in the order of <paramref name="order" />, or null

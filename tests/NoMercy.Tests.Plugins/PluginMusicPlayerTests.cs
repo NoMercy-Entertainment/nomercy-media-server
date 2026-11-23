@@ -273,5 +273,26 @@ public sealed class PluginMusicPlayerTests
             Orders.Add(order);
             return Task.FromResult(PluginMusicQueueAnswer.Accepted);
         }
+
+        public Task<PluginMusicTransitionAnswer> OfferTransitionAsync(
+            Ulid pluginId,
+            Guid userId,
+            PluginMusicTransition transition,
+            CancellationToken ct = default
+        )
+        {
+            Calls++;
+            return Task.FromResult(PluginMusicTransitionAnswer.Accepted);
+        }
+
+        public Task WithdrawTransitionAsync(
+            Ulid pluginId,
+            Guid userId,
+            CancellationToken ct = default
+        )
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
     }
 }

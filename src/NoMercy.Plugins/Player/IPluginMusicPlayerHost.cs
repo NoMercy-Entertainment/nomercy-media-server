@@ -39,4 +39,18 @@ public interface IPluginMusicPlayerHost
         IReadOnlyList<Guid> order,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Takes a transition <paramref name="pluginId" /> offers for a listener.
+    /// The file was already found in that plugin's own folder.
+    /// </summary>
+    Task<PluginMusicTransitionAnswer> OfferTransitionAsync(
+        Ulid pluginId,
+        Guid userId,
+        PluginMusicTransition transition,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Drops the offer for a listener, if it is <paramref name="pluginId" />'s.</summary>
+    Task WithdrawTransitionAsync(Ulid pluginId, Guid userId, CancellationToken ct = default);
 }

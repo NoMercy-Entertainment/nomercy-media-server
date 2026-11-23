@@ -219,7 +219,8 @@ public sealed class PluginMusicPlayerHostTests : IDisposable
     {
         MusicPlayerState state = Play();
         state.CrossfadeSignalSent = signalSent;
-        state.IsCrossfading = crossfading;
+        if (crossfading)
+            _playback.StartCrossfade(_user.Id, "phone", 3000);
 
         PluginMusicQueueAnswer front = await _host.MoveInQueueAsync(_user.Id, _third.Id, 0);
         PluginMusicQueueAnswer whole = await _host.ReorderQueueAsync(

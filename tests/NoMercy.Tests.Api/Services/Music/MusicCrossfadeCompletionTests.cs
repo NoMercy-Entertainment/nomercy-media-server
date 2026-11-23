@@ -33,6 +33,7 @@ public sealed class MusicCrossfadeCompletionTests : IDisposable
     private readonly MusicPlayerStateManager _states = new();
     private readonly Mock<IClientMessenger> _messenger = new();
     private readonly MusicPlaybackService _service;
+    private readonly TaskCompletionSource _untilTheTestEnds = new();
 
     private readonly PlaylistTrackDto _playing = Track("playing");
     private readonly PlaylistTrackDto _next = Track("next");
@@ -51,9 +52,18 @@ public sealed class MusicCrossfadeCompletionTests : IDisposable
             )
             .Returns(Task.CompletedTask);
         _service = new(_states, Mock.Of<IServiceProvider>(), _messenger.Object, new());
+
+        // A completed crossfade starts the player's 100 ms tick, which moves
+        // the position these tests read. The tick skips a round when the
+        // state lock is taken, so it is held for as long as a test runs.
+        _ = _service.WithStateLockAsync(_user.Id, () => _untilTheTestEnds.Task);
     }
 
-    public void Dispose() => _service.RemoveTimer(_user.Id);
+    public void Dispose()
+    {
+        _service.RemoveTimer(_user.Id);
+        _untilTheTestEnds.TrySetResult();
+    }
 
     [Fact]
     public async Task Without_a_position_the_new_track_starts_at_zero_as_before()
@@ -244,6 +254,127 @@ public sealed class MusicCrossfadeCompletionTests : IDisposable
             .Should()
             .Be(MusicCrossfadeCompletion.Ignored);
     }
+
+    /// <summary>
+    /// Audio that stood in for a stretch inside one track leads back into
+    /// that track: the player names the track that already plays.
+    /// </summary>
+    [Fact]
+    public async Task The_track_that_already_plays_is_accepted_and_goes_on_at_the_position()
+    {
+        MusicPlayerState state = Fading();
+        state.SetPosition(95_000);
+
+        MusicCrossfadeCompletion completion = await _service.CompleteCrossfade(
+            _user,
+            Device,
+            _playing.Id,
+            75_000
+        );
+
+        completion.Should().Be(MusicCrossfadeCompletion.Completed);
+        state.CurrentItem.Should().BeSameAs(_playing);
+        state.Time.Should().Be(75_000);
+        state.Playlist.Should().Equal(_next, _later);
+        state.Backlog.Should().BeEmpty();
+        state.IsCrossfading.Should().BeFalse();
+        state.CrossfadeDeviceId.Should().BeNull();
+    }
+
+    /// <summary>
+    /// While the file played the server's clock ran on and can have sent the
+    /// crossfade signal. From the position the track goes on at, that signal
+    /// is due again at the track's real end.
+    /// </summary>
+    [Fact]
+    public async Task After_a_join_back_into_the_track_the_crossfade_signal_is_due_again()
+    {
+        MusicPlayerState state = Fading();
+        state.CrossfadeSignalSent = true;
+
+        await _service.CompleteCrossfade(_user, Device, _playing.Id, 75_000);
+
+        state.CrossfadeSignalSent.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_position_past_the_end_of_the_playing_track_is_refused()
+    {
+        MusicPlayerState state = Fading();
+
+        (await _service.CompleteCrossfade(_user, Device, _playing.Id, 180_001))
+            .Should()
+            .Be(MusicCrossfadeCompletion.PositionOutsideTrack);
+        state.Time.Should().Be(178_000);
+        state.IsCrossfading.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The transition that was played is done with. One offered since, for the
+    /// join into the next track, is still to come.
+    /// </summary>
+    [Fact]
+    public async Task A_join_back_into_the_track_ends_its_own_transition_and_keeps_a_later_one()
+    {
+        MusicPlayerState state = Fading();
+        state.Transition = Offer(_playing.Id, sent: true);
+
+        await _service.CompleteCrossfade(_user, Device, _playing.Id, 75_000);
+        state.Transition.Should().BeNull();
+
+        MusicTransitionOffer intoTheNext = Offer(_next.Id, sent: false);
+        state.Transition = intoTheNext;
+        _service.StartCrossfade(_user.Id, Device, 3000);
+
+        await _service.CompleteCrossfade(_user, Device, _playing.Id, 80_000);
+        state.Transition.Should().BeSameAs(intoTheNext);
+    }
+
+    /// <summary>
+    /// The playing track can be queued again further on. Its id then means
+    /// that queued place, as it always did, unless a transition back into the
+    /// playing track was sent.
+    /// </summary>
+    [Fact]
+    public async Task A_playing_track_that_is_queued_again_is_read_as_the_queued_one_as_before()
+    {
+        MusicPlayerState state = Fading();
+        state.Playlist = [_next, _playing];
+
+        await _service.CompleteCrossfade(_user, Device, _playing.Id);
+
+        state.CurrentItem.Should().BeSameAs(_playing);
+        state.Playlist.Should().BeEmpty();
+        state.Backlog.Should().Equal(_playing, _next);
+        state.Time.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task With_a_transition_back_into_it_sent_the_playing_track_is_meant()
+    {
+        MusicPlayerState state = Fading();
+        state.Playlist = [_next, _playing];
+        state.Transition = Offer(_playing.Id, sent: true);
+
+        await _service.CompleteCrossfade(_user, Device, _playing.Id, 75_000);
+
+        state.Playlist.Should().Equal(_next, _playing);
+        state.Time.Should().Be(75_000);
+    }
+
+    private MusicTransitionOffer Offer(Guid into, bool sent) =>
+        new()
+        {
+            PluginId = Ulid.NewUlid(),
+            FromTrackId = _playing.Id,
+            ToTrackId = into,
+            File = "joins/a-b.m4a",
+            OutgoingStopMs = 170_000,
+            IncomingResumeMs = 12_000,
+            DurationMs = 20_000,
+            DeviceId = Device,
+            Sent = sent,
+        };
 
     private MusicPlayerState Fading()
     {

@@ -1,7 +1,7 @@
 # Following and shaping music playback
 
-How a plugin learns what a listener plays and puts the listener's upcoming
-tracks in another order. A scrobbler, a plugin that shows
+How a plugin learns what a listener plays, puts the listener's upcoming
+tracks in another order, and supplies the audio that joins two tracks. A scrobbler, a plugin that shows
 something in time with the music, a station that follows what was played, a
 plugin that prepares something for the track that comes next: each needs to
 know that a track started, for whom, and what is queued behind it.
@@ -136,3 +136,133 @@ What to rely on:
   server plays after the playing one and what it tells the players to load.
 - **`IPluginPlayer.Queue` is not this.** That member arranges sources a
   plugin plays itself on the caller's own player, and no host carries it.
+
+## Supplying the audio that joins two tracks
+
+The join between two tracks is a crossfade the player makes. A plugin that
+has audio for that join hands it to the server, and the server passes it to
+the listener's players in time: a transition rendered from the two tracks, a
+station ident, a spoken introduction.
+
+```json
+{
+  "capabilities": {
+    "hooks": ["player.state", "player.queue", "media.proxy"]
+  }
+}
+```
+
+An offer needs `player.queue`, and `media.proxy` because the server serves
+the file. `player.state` is for the topics that say when to offer.
+
+```csharp
+PluginMusicTransitionAnswer answer = await context.Player.Music.OfferTransitionAsync(
+    userId,
+    new PluginMusicTransition(
+        FromTrackId: playing,
+        ToTrackId: next,
+        File: "joins/a-b.m4a",
+        OutgoingStopMs: 170_000,
+        IncomingResumeMs: 12_000,
+        DurationMs: 20_000
+    )
+    {
+        Data = """{"bars":8}""",
+    },
+    ct
+);
+```
+
+| field | meaning |
+|---|---|
+| `FromTrackId` | the track the file leads out of; it must be the track that plays |
+| `ToTrackId` | the track the file leads into: the listener's next track, or `FromTrackId` itself for a file that stands in for a stretch inside the playing track |
+| `File` | the audio file in the plugin's own folder (`context.Storage.Private`), by its relative path with forward slashes |
+| `OutgoingStopMs` | where the first track hands over to the file |
+| `IncomingResumeMs` | where the second track goes on after the file |
+| `DurationMs` | the length of the file, 1 to 600000 |
+| `Data` | a JSON object the server passes on to the players unread, at most 65536 characters; null for none |
+
+A file that begins with the first track alone and ends with the second track
+alone lets a player switch to it and away from it without a click.
+
+| answer | meaning |
+|---|---|
+| `Accepted` | the server holds the offer |
+| `NothingPlaying` | nothing plays for this listener |
+| `NotThePlayingTrack` | `FromTrackId` is not the track that plays |
+| `NotTheNextTrack` | `ToTrackId` is neither the next track nor the playing one |
+| `OutsideTheTrack` | the stop or the resume position lies past the end of its track |
+| `TooLate` | the playing track is at or past the stop, or the players were already told what comes next |
+
+A call without the capabilities, or for a file that is not in the plugin's
+own folder, throws `PluginRefusedException`. Values that cannot be (a negative
+position, a length out of range, data that is not one JSON object) throw
+`ArgumentException`.
+
+### One offer per listener, and when it ends
+
+The server keeps one offer per listener. A new offer replaces the one before,
+`WithdrawTransitionAsync(userId)` takes the plugin's own offer back, and the
+offer ends by itself when it no longer fits what plays:
+
+| what happens | topic that says so |
+|---|---|
+| another track starts, which is also how a join into the next track ends | `music.playback.started` |
+| a join back into the playing track was played | none of its own; `music.playback.seeked` when the track goes on two seconds or more from where the server's clock stood |
+| playback stops | `music.playback.stopped` |
+| the next track is no longer `ToTrackId`: the queue changed at its front, or repeat changed what comes next | `music.playback.queue.changed`, `music.playback.mode.changed` |
+| another device takes over | `music.playback.device.changed` |
+| the listener seeks to the stop or past it | `music.playback.seeked` |
+
+A change further down the queue leaves the offer, and so does a seek to
+before the stop. An offer that leads back into the playing track does not
+depend on the next track, so a change of the queue leaves it too.
+
+Offer after `music.playback.started`, and again after any of the topics above
+while there is still time. The players need ten seconds: that long before the
+stop they are sent the offer.
+
+Once the players were sent an offer it cannot be replaced, and a withdrawal
+no longer reaches them: a player that loaded the file plays it. When no
+player has started it five seconds past its stop, the server lets the offer
+go and a new one can be made.
+
+### What the players are sent
+
+Ten seconds before the playing track reaches `OutgoingStopMs` the music hub
+sends the listener's clients a message of its own, `PrepareTransition`:
+
+```json
+{
+  "next_item": { "id": "..." },
+  "transition": {
+    "url": "/api/v1/plugins/{pluginId}/media/{ticket}",
+    "mime": "audio/mp4",
+    "duration_ms": 20000,
+    "outgoing_stop_ms": 170000,
+    "incoming_resume_ms": 12000,
+    "data": { "bars": 8 }
+  },
+  "timestamp": 1790000000000
+}
+```
+
+- `next_item` is the track the file leads into, in the shape `PrepareCrossfade`
+  sends it. It is the playing item itself for a join back into the track.
+- `url` is relative to the server, is made for that one listener at that
+  moment, and plays for nobody else. It is fetched like every plugin media
+  link, with the listener's own sign-in.
+- The player that sounds plays the track up to `outgoing_stop_ms`, switches to
+  the file and sends `CrossfadeStartCommand(duration_ms)`; at the file's end
+  it goes on with `next_item` at `incoming_resume_ms` and sends
+  `CrossfadeCompleteAtCommand(next_item.id, incoming_resume_ms)`.
+- A file that is not loaded in time is left out. `PrepareCrossfade` is still
+  sent when and as it always was, so the crossfade of always happens then. A
+  client that took the transition ignores `PrepareCrossfade` for that track,
+  and a client that does not know `PrepareTransition` never sees a difference.
+- After a seek back to more than ten seconds before the stop, the message is
+  sent again when its moment comes. The newest one for a track replaces the
+  one before.
+
+Both messages are written down in `signalr-contracts.json` under `messages`.
