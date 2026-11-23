@@ -134,14 +134,17 @@ public sealed class BackupTestFolder : IDisposable
     public static BackupService CreateBackupService(
         BackupOptions options,
         ISqliteFileOperations? sqlite = null,
-        IStorageDriver? storage = null
+        IStorageDriver? storage = null,
+        IBackupSetWriter? writer = null,
+        IVolumeInspector? volumes = null
     ) =>
         new(
             storage ?? new LocalStorageDriver(),
-            CreateWriter(options, sqlite, storage),
+            writer ?? CreateWriter(options, sqlite, storage),
             options,
             TimeProvider.System,
-            NullLogger<BackupService>.Instance
+            NullLogger<BackupService>.Instance,
+            volumes
         );
 
     public void Dispose()

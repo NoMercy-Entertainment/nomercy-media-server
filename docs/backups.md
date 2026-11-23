@@ -70,9 +70,23 @@ If the record of the last restore cannot be read, it is renamed to
 protection it gave.
 
 Separately, right before a server update changes a database, that one
-database is copied to `<data folder>/backups/<name>.<time>.db`. The newest five
-of those are kept per database. They are a last resort for a failed upgrade
-and are not listed or restored through the API.
+database is copied to `<data folder>/backups/<name>.<time>.db`. They are a
+last resort for a failed upgrade and are not listed or restored through the
+API. Such a copy is kept until every good set the server keeps is newer than
+it, so about five days with the daily backup, and never more than the newest
+five per database. The daily backup wrote copies with this name too before it
+became a set; a server that was updated across that change loses those the
+first time a set is made.
+
+### When the disk is nearly full
+
+Before a set is written the server removes what the backups folder holds for
+nothing: any `.incomplete-<id>` folder a failed backup left behind, and the
+single-database copies described above that are older than every kept set.
+It then compares the size of the databases with the free space on the disk
+that holds the backups. When the set would not fit, nothing is written and
+the log says how much is needed and how much is free. A copy that fills the
+disk half way would take the running server's own databases down with it.
 
 ## Restoring a backup
 
