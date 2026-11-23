@@ -11,6 +11,7 @@
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using NoMercy.Api.WebSockets;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Discovery;
@@ -35,7 +36,8 @@ public class ServerCastWaker(
     CastSessionTokenService tokens,
     IHttpContextAccessor httpContextAccessor,
     ILogger<ServerCastWaker> logger,
-    INetworkDiscovery? networkDiscovery = null
+    INetworkDiscovery? networkDiscovery = null,
+    DeviceBusRegistry? busRegistry = null
 ) : IServerCastWaker
 {
     /// <summary>
@@ -84,6 +86,7 @@ public class ServerCastWaker(
             targetIsLive: false,
             targetIp: targetIp,
             useAndroidReceiver: useAndroidReceiver,
+            isAppOnlineNow: busRegistry is null ? null : () => busRegistry.IsOnline(deviceId),
             resolveLaunchData: () =>
                 tokens.MintAsync(
                     callerBearer: callerBearer,

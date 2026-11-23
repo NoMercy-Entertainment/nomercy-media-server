@@ -260,6 +260,56 @@ public class CastPanelWakeLauncherTests
     }
 
     [Fact]
+    public async Task LaunchIfColdAsync_RelaunchesOnTheWebReceiverWithTheToken_WhenTheAppNeverComesOnline()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) =
+            MakeFastFollowUpLauncher();
+        LaunchCustomData launchData = new() { AccessToken = "token" };
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+        TaskCompletionSource webLaunch = new();
+        chromeCast
+            .Setup(c => c.LaunchAndroidReceiver(ReceiverName, launchData, false))
+            .Callback(() => webLaunch.TrySetResult())
+            .Returns(Task.CompletedTask);
+
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: true,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(launchData),
+            isAppOnlineNow: () => false
+        );
+        Task finished = await Task.WhenAny(webLaunch.Task, Task.Delay(5000));
+
+        finished.Should().BeSameAs(webLaunch.Task);
+        chromeCast.Verify(c => c.LaunchAndroidReceiver(ReceiverName, launchData, true), Times.Once);
+    }
+
+    [Fact]
+    public async Task LaunchIfColdAsync_KeepsTheAppLaunch_WhenTheAppComesOnline()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) =
+            MakeFastFollowUpLauncher();
+        LaunchCustomData launchData = new() { AccessToken = "token" };
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: true,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(launchData),
+            isAppOnlineNow: () => true
+        );
+        await Task.Delay(200);
+
+        chromeCast.Verify(
+            c =>
+                c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            Times.Once
+        );
+    }
+
+    [Fact]
     public async Task LaunchIfColdAsync_NeverPolls_WhenNoOnlineCheckWasGiven()
     {
         (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeLauncher();

@@ -58,7 +58,8 @@ public class CastPanelWakeLauncher(
         string? targetIp,
         bool useAndroidReceiver,
         Func<Task<LaunchCustomData?>> resolveLaunchData,
-        Func<bool>? isTargetOnlineNow = null
+        Func<bool>? isTargetOnlineNow = null,
+        Func<bool>? isAppOnlineNow = null
     )
     {
         if (!ShouldFireCastWake(targetIsLive))
@@ -132,12 +133,48 @@ public class CastPanelWakeLauncher(
                     );
                 }
             }
+
+            // No app on the TV: Cast Connect falls back to a Web Receiver without the token.
+            // Not awaited, so the caller's wake answer stays fast.
+            if (useAndroidReceiver && isAppOnlineNow is not null)
+                _ = FallBackToWebReceiverAsync(receiverName, launchData, isAppOnlineNow);
         }
         catch (Exception ex)
         {
             logger.LogWarning(
                 "Server-side Cast launch failed for {TargetIp}: {Message}",
                 targetIp,
+                ex.Message
+            );
+        }
+    }
+
+    private async Task FallBackToWebReceiverAsync(
+        string receiverName,
+        LaunchCustomData? launchData,
+        Func<bool> isAppOnlineNow
+    )
+    {
+        try
+        {
+            if (await PollForOnlineAsync(isAppOnlineNow))
+                return;
+
+            logger.LogInformation(
+                "NoMercy app of '{Receiver}' never came online — launching the Web Receiver",
+                receiverName
+            );
+            await chromeCast.LaunchAndroidReceiver(
+                receiverName,
+                launchData,
+                useAndroidReceiver: false
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                "Web Receiver fallback launch failed for '{Receiver}': {Message}",
+                receiverName,
                 ex.Message
             );
         }
