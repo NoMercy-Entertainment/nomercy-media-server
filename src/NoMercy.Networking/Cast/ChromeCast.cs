@@ -686,11 +686,15 @@ public class ChromeCastService : IChromeCastService
             }
         }
 
+        bool stoppedOldSession = false;
         if (!useAndroidReceiver)
         {
             try
             {
-                await StopStaleNoMercySessionAsync(client, target);
+                stoppedOldSession = await StopStaleNoMercySessionAsync(client, target);
+                // The TV drops our connection when its app stops; launch on a fresh one.
+                if (stoppedOldSession)
+                    client = await ForceReconnectAsync(target) ?? client;
             }
             catch (Exception ex)
             {
@@ -724,11 +728,7 @@ public class ChromeCastService : IChromeCastService
         // an already-active app as an immediate ack. LAUNCH is still sent
         // (below) so the running app receives the fresh customData/session
         // info — only the wait-for-broadcast confirmation is skipped.
-        bool alreadyRunning = string.Equals(
-            client.ChromecastStatus?.Application?.AppId,
-            "925B4C3C",
-            StringComparison.OrdinalIgnoreCase
-        );
+        bool alreadyRunning = LaunchAlreadyRunning(client.ChromecastStatus, stoppedOldSession);
 
         // Watch for cast_shell's reply on this request id. RECEIVER_STATUS
         // arrives back on the receiver channel when cast_shell accepts the
@@ -891,12 +891,17 @@ public class ChromeCastService : IChromeCastService
     internal static string BuildLaunchHandoverJson(object customData) =>
         JsonConvert.SerializeObject(new { launch = customData });
 
+    // A stopped session must not count as running: the status snapshot predates the STOP.
+    internal static bool LaunchAlreadyRunning(ChromecastStatus? status, bool stoppedOldSession) =>
+        !stoppedOldSession
+        && string.Equals(status?.Application?.AppId, NoMercyAppId, StringComparison.OrdinalIgnoreCase);
+
     // A running NoMercy web receiver swallows a new LAUNCH (CAF ready fires once per page), so end it first.
-    private async Task StopStaleNoMercySessionAsync(ChromecastClient client, string target)
+    private async Task<bool> StopStaleNoMercySessionAsync(ChromecastClient client, string target)
     {
         string? staleSession = FindNoMercySessionId(client.ChromecastStatus);
         if (staleSession is null)
-            return;
+            return false;
 
         _logger.LogInformation(
             "Ending the running NoMercy receiver session on {Target} before a fresh launch",
@@ -910,6 +915,7 @@ public class ChromeCastService : IChromeCastService
             status => FindNoMercySessionId(status) is null,
             3000
         );
+        return true;
     }
 
     // Plain GET_STATUS sends, replies read from ReceiverStatusChanged: awaiting
