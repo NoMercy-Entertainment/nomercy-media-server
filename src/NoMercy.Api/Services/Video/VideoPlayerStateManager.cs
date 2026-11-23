@@ -18,9 +18,6 @@ public class VideoPlayerStateManager
 {
     private readonly ConcurrentDictionary<Guid, VideoPlayerState> _playerStates = new();
 
-    // The device a user picked while no playback existed; the next playback starts on it.
-    private readonly ConcurrentDictionary<Guid, string> _pendingDevices = new();
-
     public VideoPlayerState? GetState(Guid userId)
     {
         return _playerStates.TryGetValue(userId, out VideoPlayerState? state) ? state : null;
@@ -44,17 +41,6 @@ public class VideoPlayerStateManager
     public void ClearAllStates()
     {
         _playerStates.Clear();
-        _pendingDevices.Clear();
-    }
-
-    public void SetPendingDevice(Guid userId, string deviceId)
-    {
-        _pendingDevices[userId] = deviceId;
-    }
-
-    public string? TakePendingDevice(Guid userId)
-    {
-        return _pendingDevices.TryRemove(userId, out string? deviceId) ? deviceId : null;
     }
 
     public bool TryGetValue(Guid userId, [NotNullWhen(true)] out VideoPlayerState? state)

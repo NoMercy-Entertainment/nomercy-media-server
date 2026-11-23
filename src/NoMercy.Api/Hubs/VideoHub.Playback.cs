@@ -325,17 +325,6 @@ public partial class VideoHub
             listId
         );
 
-        string? chosenDeviceId = _videoPlayerStateManager.TakePendingDevice(user.Id);
-        if (chosenDeviceId is not null)
-        {
-            _logger.LogInformation(
-                "Video playback starts on the device chosen earlier user={User} device={DeviceId}",
-                UserLogText.Of(user),
-                chosenDeviceId
-            );
-            videoPlayerState.DeviceId = chosenDeviceId;
-        }
-
         _videoPlayerStateManager.UpdateState(user.Id, videoPlayerState);
         await _videoPlaybackService.UpdatePlaybackState(user, videoPlayerState);
         await _videoPlaybackService.PublishStartedEventAsync(user.Id, videoPlayerState);
@@ -632,16 +621,11 @@ public partial class VideoHub
             ? null
             : CastAddress.Resolve(targetTv.LanIp, targetTv.Ip);
 
-        CastLaunchOutcome? launch = null;
-
         if (targetTv is not null && targetIp is null)
-        {
             _logger.LogWarning(
                 "No LAN address recorded for TV {DeviceId} — skipping panel wake",
                 deviceId
             );
-            launch = CastLaunchOutcome.NoAddress;
-        }
 
         if (targetTv is not null && targetIp is not null)
         {
@@ -655,35 +639,33 @@ public partial class VideoHub
             string? callerBearer = CallerBearer.From(Context);
 
             // A handoff always wakes the panel, so the target is treated as cold.
-            launch = await _castPanelWakeLauncher.LaunchIfColdAsync(
-                targetIsLive: false,
-                targetIp,
-                useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
-                () =>
-                    _castTokenService.MintAsync(
-                        callerBearer: callerBearer,
-                        userId: user.Id,
-                        serverId: serverIdString,
-                        serverUrl: serverUrl,
-                        deviceId: targetUlid,
-                        intent: intent,
-                        clientLocale: locale
-                    )
-            );
-
-            _logger.Log(
-                launch == CastLaunchOutcome.Launched ? LogLevel.Information
-                    : launch == CastLaunchOutcome.Failed ? LogLevel.Error
-                    : LogLevel.Warning,
-                "Video cast launch to {DeviceId} user={User}: {Outcome}",
-                deviceId,
-                UserLogText.Of(user),
-                launch
-            );
+            // Not awaited: a Cast launch takes seconds and must not hold up the handoff.
+            _ = _castPanelWakeLauncher
+                .LaunchIfColdAsync(
+                    targetIsLive: false,
+                    targetIp,
+                    useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
+                    () =>
+                        _castTokenService.MintAsync(
+                            callerBearer: callerBearer,
+                            userId: user.Id,
+                            serverId: serverIdString,
+                            serverUrl: serverUrl,
+                            deviceId: targetUlid,
+                            intent: intent,
+                            clientLocale: locale
+                        )
+                )
+                .ContinueWith(
+                    task =>
+                        LogVideoCastLaunch(
+                            deviceId,
+                            UserLogText.Of(user),
+                            task.IsCompletedSuccessfully ? task.Result : CastLaunchOutcome.Failed
+                        ),
+                    TaskScheduler.Default
+                );
         }
-
-        bool targetReachable = targetTv is null || _busRegistry.IsOnline(targetTv.Id);
-        bool launchFailed = launch is not null and not CastLaunchOutcome.Launched;
 
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
         {
@@ -697,16 +679,13 @@ public partial class VideoHub
         }
         else
         {
-            _videoPlayerStateManager.SetPendingDevice(user.Id, deviceId);
             _logger.LogInformation(
-                "Video device {DeviceId} chosen user={User} without playback: no playback moved, the next playback starts there",
+                "Video device {DeviceId} chosen user={User} without playback: no playback was moved",
                 deviceId,
                 UserLogText.Of(user)
             );
             await _videoPlaybackService.UpdatePlaybackState(user, playerState);
-            return launchFailed && !targetReachable
-                ? HubCommandResult.FromWakeStatus("no_route")
-                : HubCommandResult.NoPlaybackMoved();
+            return HubCommandResult.NoPlaybackMoved();
         }
 
         EventPayload<BroadcastEventPayload<VideoEventType>> payload = new()
@@ -727,18 +706,23 @@ public partial class VideoHub
 
         await _clientMessenger.SendTo("ChangeDevice", "videoHub", user.Id, payload);
 
-        if (launchFailed && !targetReachable)
-        {
-            _logger.LogWarning(
-                "Video device change to {DeviceId} user={User}: the TV was not launched ({Outcome}) and is not on the device bus",
-                deviceId,
-                UserLogText.Of(user),
-                launch
-            );
-            return HubCommandResult.FromWakeStatus("no_route");
-        }
-
         return HubCommandResult.Success();
+    }
+
+    private void LogVideoCastLaunch(string deviceId, string user, CastLaunchOutcome outcome)
+    {
+        _logger.Log(
+            outcome switch
+            {
+                CastLaunchOutcome.Launched => LogLevel.Information,
+                CastLaunchOutcome.Failed => LogLevel.Error,
+                _ => LogLevel.Warning,
+            },
+            "Video cast launch to {DeviceId} user={User}: {Outcome}",
+            deviceId,
+            user,
+            outcome
+        );
     }
 
     private static HubCommandResult? ValidateProgressRequest(VideoProgressRequest? request)
