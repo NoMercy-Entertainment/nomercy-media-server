@@ -162,6 +162,14 @@ public interface IPluginMusicQuery
     );
 }
 
+/// <param name="Album">
+/// The name of one album the track is on. <see cref="Albums" /> lists every
+/// album, this one first.
+/// </param>
+/// <param name="Artist">
+/// The name of one artist of the track. <see cref="Artists" /> lists every
+/// artist, this one first.
+/// </param>
 /// <param name="DurationSeconds">Null when the library never recorded one.</param>
 public record PluginTrack(
     Guid Id,
@@ -172,7 +180,113 @@ public record PluginTrack(
     int? DiscNumber,
     double? DurationSeconds,
     string LibraryId
-);
+)
+{
+    /// <summary>
+    /// The names of the track's genres, in alphabetical order. The track's
+    /// own; where it has none, those of its albums. Empty when neither has
+    /// one, or when the server says nothing about it; never null.
+    /// <para>
+    /// This and the members below are members rather than positional
+    /// parameters, so a plugin compiled against the older shape still
+    /// constructs and still reads the eight it knows. Added in ABI 12.15.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> Genres
+    {
+        get;
+        init => field = value ?? [];
+    } = [];
+
+    /// <summary>
+    /// The year the track was released: its own date, or else the year of the
+    /// album <see cref="Album" /> names. Null when neither is known. Added in
+    /// ABI 12.15.
+    /// </summary>
+    public int? Year { get; init; }
+
+    /// <summary>
+    /// The id of the album <see cref="Album" /> names, so two tracks can be
+    /// told to be neighbours on one album. Null when the track is on none.
+    /// Added in ABI 12.15.
+    /// </summary>
+    public Guid? AlbumId { get; init; }
+
+    /// <summary>
+    /// Every album the track is on, the one <see cref="Album" /> names first
+    /// and the rest by name. Empty when the track is on none, or when the
+    /// server says nothing about it; never null. Added in ABI 12.15.
+    /// </summary>
+    public IReadOnlyList<PluginTrackAlbum> Albums
+    {
+        get;
+        init => field = value ?? [];
+    } = [];
+
+    /// <summary>
+    /// Every artist of the track, the one <see cref="Artist" /> names first
+    /// and the rest by name: the server keeps no order of its own for them.
+    /// Empty when the track has none, or when the server says nothing about
+    /// it; never null. Added in ABI 12.15.
+    /// </summary>
+    public IReadOnlyList<PluginTrackArtist> Artists
+    {
+        get;
+        init => field = value ?? [];
+    } = [];
+
+    /// <summary>
+    /// Value equality, with the three lists compared by their items. The
+    /// generated equality would compare them by reference, so two reads of one
+    /// unchanged track would stop being equal, and a plugin built before 12.15
+    /// that spots changes with <c>==</c>, a set or a dictionary key would see
+    /// every track change on every read.
+    /// </summary>
+    public virtual bool Equals(PluginTrack? other) =>
+        ReferenceEquals(this, other)
+        || (
+            other is not null
+            && EqualityContract == other.EqualityContract
+            && Id == other.Id
+            && Title == other.Title
+            && Album == other.Album
+            && Artist == other.Artist
+            && TrackNumber == other.TrackNumber
+            && DiscNumber == other.DiscNumber
+            && Nullable.Equals(DurationSeconds, other.DurationSeconds)
+            && LibraryId == other.LibraryId
+            && Year == other.Year
+            && AlbumId == other.AlbumId
+            && Genres.SequenceEqual(other.Genres)
+            && Albums.SequenceEqual(other.Albums)
+            && Artists.SequenceEqual(other.Artists)
+        );
+
+    public override int GetHashCode()
+    {
+        HashCode hash = new();
+        hash.Add(EqualityContract);
+        hash.Add(Id);
+        hash.Add(Title);
+        hash.Add(Album);
+        hash.Add(Artist);
+        hash.Add(TrackNumber);
+        hash.Add(DiscNumber);
+        hash.Add(DurationSeconds);
+        hash.Add(LibraryId);
+        hash.Add(Year);
+        hash.Add(AlbumId);
+
+        foreach (string genre in Genres)
+            hash.Add(genre);
+        foreach (PluginTrackAlbum album in Albums)
+            hash.Add(album);
+        foreach (PluginTrackArtist artist in Artists)
+            hash.Add(artist);
+
+        return hash.ToHashCode();
+    }
+}
 
 /// <summary>
 /// One track's measurements. Every member is nullable because a partial

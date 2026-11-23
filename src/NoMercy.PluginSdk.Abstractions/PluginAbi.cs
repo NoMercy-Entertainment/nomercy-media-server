@@ -81,7 +81,11 @@ public static class PluginAbi
     // IPluginMusicPlayer also takes audio for the join out of the playing track
     // (OfferTransitionAsync, WithdrawTransitionAsync) as PluginMusicTransition, answered with
     // PluginMusicTransitionAnswer; the server sends it to the listener's players in time.
-    public static Version Current { get; } = new(12, 14);
+    // 12.15 added PluginTrack.Genres, Year, AlbumId, Albums and Artists (init-only properties, so
+    // the constructor a plugin was compiled against is still there) with PluginTrackAlbum and
+    // PluginTrackArtist, and PluginTrack's own Equals and GetHashCode, which compare the lists
+    // by value so two reads of one track stay equal.
+    public static Version Current { get; } = new(12, 15);
 
     /// <summary>
     /// The oldest major this server can load at all.

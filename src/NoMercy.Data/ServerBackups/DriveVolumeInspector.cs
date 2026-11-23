@@ -47,6 +47,23 @@ public sealed class DriveVolumeInspector(
         return _mountRoots().Select(WithSeparator).Any(root => root.Equals(real, PathComparison));
     }
 
+    public long? FreeBytesAt(string path)
+    {
+        if (VolumeOf(path) is not { } root)
+            return null;
+
+        try
+        {
+            return new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception exception)
+            when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // A volume that cannot be asked gives no answer; the caller goes on without one.
+            return null;
+        }
+    }
+
     /// <summary>
     /// The path with every link along it replaced by its target, from the root
     /// down. Parts that do not exist yet are kept as they are.
