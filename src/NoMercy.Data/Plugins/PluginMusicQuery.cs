@@ -61,6 +61,7 @@ public class PluginMusicQuery(
         }
 
         return await ReadTracksAsync(
+            context,
             libraryTracks
                 // Ordered because a page without one is a page that can repeat
                 // or skip rows between calls.
@@ -86,6 +87,7 @@ public class PluginMusicQuery(
         Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
 
         return await ReadTracksAsync(
+            context,
             context
                 .LibraryTrack.AsNoTracking()
                 .Playable()
@@ -103,6 +105,7 @@ public class PluginMusicQuery(
     /// is the track a page of the library shows, field for field.
     /// </summary>
     private static async Task<IReadOnlyList<PluginTrack>> ReadTracksAsync(
+        MediaContext context,
         IQueryable<LibraryTrack> libraryTracks,
         CancellationToken ct
     )
@@ -120,21 +123,159 @@ public class PluginMusicQuery(
                 libraryTrack.Track.TrackNumber,
                 libraryTrack.Track.DiscNumber,
                 libraryTrack.Track.Duration,
-                libraryTrack.LibraryId.ToString()
+                libraryTrack.LibraryId.ToString(),
+                libraryTrack.Track.Date
             ))
             .ToListAsync(ct);
 
-        return rows.Select(row => new PluginTrack(
-                row.Id,
-                row.Title,
-                row.Album,
-                row.Artist,
-                row.TrackNumber,
-                row.DiscNumber,
-                ParseDurationSeconds(row.Duration),
-                row.LibraryId
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        TrackDetails details = await ReadDetailsAsync(
+            context,
+            rows.Select(row => row.Id).Distinct().ToArray(),
+            ct
+        );
+
+        return rows.Select(row => WithDetails(row, details)).ToList();
+    }
+
+    private static PluginTrack WithDetails(TrackRow row, TrackDetails details)
+    {
+        List<AlbumLink> albums = NamedFirst(details.Albums[row.Id], row.Album, album => album.Name);
+        List<ArtistLink> artists = NamedFirst(
+            details.Artists[row.Id],
+            row.Artist,
+            artist => artist.Name
+        );
+
+        return new(
+            row.Id,
+            row.Title,
+            row.Album,
+            row.Artist,
+            row.TrackNumber,
+            row.DiscNumber,
+            ParseDurationSeconds(row.Duration),
+            row.LibraryId
+        )
+        {
+            Genres = GenresOf(row.Id, albums, details),
+            Year = YearOf(row.Date, albums),
+            AlbumId = albums.Count > 0 ? albums[0].AlbumId : null,
+            Albums = [.. albums.Select(album => new PluginTrackAlbum(album.AlbumId, album.Name))],
+            Artists =
+            [
+                .. artists.Select(artist => new PluginTrackArtist(artist.ArtistId, artist.Name)),
+            ],
+        };
+    }
+
+    /// <summary>
+    /// The albums, artists and genres of a page of tracks: one flat query per
+    /// link table, put together in memory. SQLite cannot nest them inside the
+    /// page's own projection.
+    /// </summary>
+    private static async Task<TrackDetails> ReadDetailsAsync(
+        MediaContext context,
+        Guid[] trackIds,
+        CancellationToken ct
+    )
+    {
+        List<AlbumLink> albums = await context
+            .AlbumTrack.AsNoTracking()
+            .Where(link => trackIds.Contains(link.TrackId))
+            .Select(link => new AlbumLink(
+                link.TrackId,
+                link.AlbumId,
+                link.Album.Name,
+                link.Album.Year
             ))
+            .ToListAsync(ct);
+
+        List<ArtistLink> artists = await context
+            .ArtistTrack.AsNoTracking()
+            .Where(link => trackIds.Contains(link.TrackId))
+            .Select(link => new ArtistLink(link.TrackId, link.ArtistId, link.Artist.Name))
+            .ToListAsync(ct);
+
+        List<GenreLink> trackGenres = await context
+            .MusicGenreTrack.AsNoTracking()
+            .Where(link => trackIds.Contains(link.TrackId))
+            .Select(link => new GenreLink(link.TrackId, link.Genre.Name))
+            .ToListAsync(ct);
+
+        Guid[] albumIds = albums.Select(album => album.AlbumId).Distinct().ToArray();
+        List<GenreLink> albumGenres = await context
+            .AlbumMusicGenre.AsNoTracking()
+            .Where(link => albumIds.Contains(link.AlbumId))
+            .Select(link => new GenreLink(link.AlbumId, link.MusicGenre.Name))
+            .ToListAsync(ct);
+
+        return new(
+            albums.ToLookup(album => album.TrackId),
+            artists.ToLookup(artist => artist.TrackId),
+            trackGenres.ToLookup(genre => genre.OwnerId, genre => genre.Name),
+            albumGenres.ToLookup(genre => genre.OwnerId, genre => genre.Name)
+        );
+    }
+
+    /// <summary>
+    /// By name, with the entry the single-name member already shows moved to
+    /// the front, so the list and that member never disagree about which one
+    /// comes first.
+    /// </summary>
+    private static List<T> NamedFirst<T>(
+        IEnumerable<T> entries,
+        string? shown,
+        Func<T, string> name
+    )
+    {
+        List<T> ordered = entries.OrderBy(name, StringComparer.OrdinalIgnoreCase).ToList();
+        int first = shown is null
+            ? -1
+            : ordered.FindIndex(entry =>
+                string.Equals(name(entry), shown, StringComparison.Ordinal)
+            );
+
+        if (first > 0)
+        {
+            T entry = ordered[first];
+            ordered.RemoveAt(first);
+            ordered.Insert(0, entry);
+        }
+
+        return ordered;
+    }
+
+    /// <summary>The track's own genres; where it has none, those of its albums.</summary>
+    private static List<string> GenresOf(Guid trackId, List<AlbumLink> albums, TrackDetails details)
+    {
+        IEnumerable<string> names = details.TrackGenres[trackId];
+
+        if (!names.Any())
+        {
+            names = albums.SelectMany(album => details.AlbumGenres[album.AlbumId]);
+        }
+
+        return names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>The track's own release year, or else that of the album shown for it.</summary>
+    private static int? YearOf(DateTime? released, List<AlbumLink> albums)
+    {
+        if (released is { Year: > 1 } date)
+        {
+            return date.Year;
+        }
+
+        return albums.Count > 0 && albums[0].Year > 0 ? albums[0].Year : null;
     }
 
     public async Task<IReadOnlyList<PluginTrackAudioAnalysis>> GetAnalysisAsync(
@@ -473,7 +614,23 @@ public class PluginMusicQuery(
         int? TrackNumber,
         int? DiscNumber,
         string? Duration,
-        string LibraryId
+        string LibraryId,
+        DateTime? Date
+    );
+
+    private sealed record AlbumLink(Guid TrackId, Guid AlbumId, string Name, int Year);
+
+    private sealed record ArtistLink(Guid TrackId, Guid ArtistId, string Name);
+
+    /// <param name="OwnerId">The track or the album the genre belongs to.</param>
+    private sealed record GenreLink(Guid OwnerId, string Name);
+
+    /// <summary>What a page of tracks is on, by and of, keyed by track or by album.</summary>
+    private sealed record TrackDetails(
+        ILookup<Guid, AlbumLink> Albums,
+        ILookup<Guid, ArtistLink> Artists,
+        ILookup<Guid, string> TrackGenres,
+        ILookup<Guid, string> AlbumGenres
     );
 
     /// <summary>

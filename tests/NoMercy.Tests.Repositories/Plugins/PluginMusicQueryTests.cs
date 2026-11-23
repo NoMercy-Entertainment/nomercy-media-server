@@ -710,6 +710,11 @@ public class PluginMusicQueryTests : IDisposable
                     225.0,
                     _libraryId.ToString()
                 )
+                {
+                    AlbumId = albumId,
+                    Albums = [new(albumId, "The Album")],
+                    Artists = [new(artistId, "The Artist")],
+                }
             );
 
         IReadOnlyList<PluginTrack> page = await query.GetTracksAsync(_libraryId.ToString());

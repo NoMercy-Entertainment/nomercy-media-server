@@ -266,3 +266,25 @@ sends the listener's clients a message of its own, `PrepareTransition`:
   one before.
 
 Both messages are written down in `signalr-contracts.json` under `messages`.
+
+## What a track tells a plugin
+
+The topics and the queue carry track ids. `IPluginContext.Music`
+(`IPluginMusicQuery`) turns ids into tracks: `GetTracksByIdAsync(ids)` for
+the ones a plugin was just told about, `GetTracksAsync(libraryId, skip, take)`
+to walk a library once and keep what it needs.
+
+Since ABI 12.15 a `PluginTrack` says enough to group, order and pick tracks:
+
+| member | meaning |
+|---|---|
+| `Album`, `Artist` | the name of one album and one artist, as before |
+| `AlbumId` | the id of the album `Album` names; two tracks with the same one are neighbours on that album |
+| `Albums` | every album the track is on (`PluginTrackAlbum`: id and name), the one `Album` names first, the rest by name |
+| `Artists` | every artist of the track (`PluginTrackArtist`: id and name), the one `Artist` names first, the rest by name; the server keeps no order of its own for them |
+| `Genres` | the names of the track's genres in alphabetical order; where the track has none, those of its albums |
+| `Year` | the year of the track's own date, or else of the album `Album` names; null when neither is known |
+
+The five new members are init-only with empty defaults, so a plugin built
+against an older 12 constructs and reads a track as before. Two reads of an
+unchanged track are equal: the lists compare by their items.

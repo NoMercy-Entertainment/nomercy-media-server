@@ -105,6 +105,20 @@ public class PluginAbiTests
             typeof(int),
         }
     )]
+    [InlineData(
+        typeof(PluginTrack),
+        new[]
+        {
+            typeof(Guid),
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(int?),
+            typeof(int?),
+            typeof(double?),
+            typeof(string),
+        }
+    )]
     public void ConstructorsElevenZeroPluginsCall_AreStillThere(Type type, Type[] parameters)
     {
         ConstructorInfo? found = type.GetConstructor(parameters);
@@ -195,6 +209,86 @@ public class PluginAbiTests
 
         library.EncodingPresets.Should().NotBeNull().And.BeEmpty();
         library.Should().Be(new PluginLibrary("shows", "Shows", "tv"));
+    }
+
+    /// <summary>
+    /// 12.15 added genres, year, album id, albums and artists to
+    /// <see cref="PluginTrack"/> as init-only members, so a plugin that builds
+    /// a track the way it always did still compiles, still reads the eight
+    /// values it knows, and sees empty lists rather than nulls.
+    /// </summary>
+    [Fact]
+    public void Track_BuiltTheWayAPluginBefore12_15BuiltIt_CarriesItsValuesAndNoDetails()
+    {
+        Guid id = Guid.NewGuid();
+        PluginTrack track = new(id, "Song", "Album", "Artist", 3, 1, 225.0, "library");
+
+        track.Id.Should().Be(id);
+        track.Album.Should().Be("Album");
+        track.Artist.Should().Be("Artist");
+        track.DurationSeconds.Should().Be(225.0);
+        track.Genres.Should().NotBeNull().And.BeEmpty();
+        track.Albums.Should().NotBeNull().And.BeEmpty();
+        track.Artists.Should().NotBeNull().And.BeEmpty();
+        track.Year.Should().BeNull();
+        track.AlbumId.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A plugin spots a changed track with <c>==</c>, a set or a dictionary
+    /// key. The lists must compare by their items, or every read of an
+    /// unchanged track looks like a change.
+    /// </summary>
+    [Fact]
+    public void Tracks_with_equal_details_are_equal_and_a_changed_detail_is_not()
+    {
+        Guid id = Guid.NewGuid();
+        Guid album = Guid.NewGuid();
+        Guid artist = Guid.NewGuid();
+        PluginTrack Track(params string[] genres) =>
+            new(id, "Song", "Album", "Artist", 3, 1, 225.0, "library")
+            {
+                Genres = [.. genres],
+                Year = 1999,
+                AlbumId = album,
+                Albums = [new(album, "Album")],
+                Artists = [new(artist, "Artist")],
+            };
+
+        PluginTrack first = Track("Pop", "Rock");
+        PluginTrack second = Track("Pop", "Rock");
+
+        first.Should().Be(second);
+        (first == second).Should().BeTrue();
+        first.GetHashCode().Should().Be(second.GetHashCode());
+        new HashSet<PluginTrack> { first }
+            .Contains(second)
+            .Should()
+            .BeTrue();
+
+        first.Should().NotBe(Track("Pop"));
+        first.Should().NotBe(first with { Year = 2000 });
+        first.Should().NotBe(first with { AlbumId = Guid.NewGuid() });
+        first.Should().NotBe(first with { Albums = [] });
+        first.Should().NotBe(first with { Artists = [new(artist, "Another name")] });
+        first.Should().NotBe(first with { Title = "Other" });
+    }
+
+    /// <summary>A server or a plugin that sets a list to null still reads as an empty one.</summary>
+    [Fact]
+    public void A_null_detail_list_on_a_track_reads_as_empty()
+    {
+        PluginTrack track = new(Guid.NewGuid(), "Song", null, null, null, null, null, "library")
+        {
+            Genres = null!,
+            Albums = null!,
+            Artists = null!,
+        };
+
+        track.Genres.Should().NotBeNull().And.BeEmpty();
+        track.Albums.Should().NotBeNull().And.BeEmpty();
+        track.Artists.Should().NotBeNull().And.BeEmpty();
+        track.Should().Be(track with { Genres = [] });
     }
 
     private static PluginLibrary Shows(params PluginEncodingPreset[] presets) =>
