@@ -93,6 +93,7 @@
     "MusicHub": [
       "ChangeDeviceCommand(System.String) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "ChangeVolumeCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
+      "CrossfadeCompleteAtCommand(System.Nullable\u003CSystem.Guid\u003E, System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "CrossfadeCompleteCommand(System.Nullable\u003CSystem.Guid\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "CrossfadeStartCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "CurrentTimeCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",

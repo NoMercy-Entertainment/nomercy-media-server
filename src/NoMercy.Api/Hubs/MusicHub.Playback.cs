@@ -894,28 +894,61 @@ public partial class MusicHub
         if (newTrackId is null || newTrackId == Guid.Empty)
             return Task.FromResult(HubCommandResult.Invalid("Track id is required."));
 
-        return HubCommandResult.ExecuteAsync(() => CrossfadeCompleteCoreAsync(newTrackId), _logger);
+        return CrossfadeCompleteCoreAsync(newTrackId.Value, 0);
     }
 
-    private async Task CrossfadeCompleteCoreAsync(Guid? newTrackId)
+    /// <summary>
+    /// <see cref="CrossfadeCompleteCommand"/> plus the position the new track is playing at.
+    ///
+    /// A join that already played the beginning of the next track (a long crossfade, or audio
+    /// supplied for the join) has that track some way in when the client reports it as done.
+    /// Without the position the server starts its clock at zero, and its position, the progress
+    /// events and the next PrepareCrossfade are all early by that much.
+    ///
+    /// A separate method rather than an extra argument on the existing one: a hub method's
+    /// arity is part of its contract, and clients that still call the old one must keep
+    /// working exactly as they did.
+    /// </summary>
+    /// <param name="newTrackId">The <see cref="Guid"/> of the track that is now playing.</param>
+    /// <param name="positionMs">Where that track is playing at this moment, in milliseconds.</param>
+    public Task<HubCommandResult> CrossfadeCompleteAtCommand(Guid? newTrackId, int? positionMs)
     {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
+        if (newTrackId is null || newTrackId == Guid.Empty)
+            return Task.FromResult(HubCommandResult.Invalid("Track id is required."));
 
-        if (newTrackId is null)
-        {
-            _logger.LogWarning(
-                "{Name}: [MusicHub.CrossfadeCompleteCommand] ignored — newTrackId was null",
-                user.Name
-            );
-            return;
-        }
+        if (positionMs is null or < 0)
+            return Task.FromResult(HubCommandResult.Invalid("Position must be non-negative."));
 
-        if (!ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? client))
-            return;
+        return CrossfadeCompleteCoreAsync(newTrackId.Value, positionMs.Value);
+    }
 
-        await _musicPlaybackService.CompleteCrossfade(user, client.DeviceId, newTrackId.Value);
+    private async Task<HubCommandResult> CrossfadeCompleteCoreAsync(Guid newTrackId, int positionMs)
+    {
+        MusicCrossfadeCompletion completion = MusicCrossfadeCompletion.Ignored;
+
+        HubCommandResult result = await HubCommandResult.ExecuteAsync(
+            async () =>
+            {
+                User? user = UserCacheService.GetUser(Context.User.UserId());
+                if (user is null)
+                    return;
+
+                if (!ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? client))
+                    return;
+
+                completion = await _musicPlaybackService.CompleteCrossfade(
+                    user,
+                    client.DeviceId,
+                    newTrackId,
+                    positionMs
+                );
+            },
+            _logger
+        );
+
+        return result.Ok && completion == MusicCrossfadeCompletion.PositionOutsideTrack
+            ? HubCommandResult.Invalid("Position is outside the track.")
+            : result;
     }
 
     private HubCommandResult? ValidateTaggedItem(string? itemId)

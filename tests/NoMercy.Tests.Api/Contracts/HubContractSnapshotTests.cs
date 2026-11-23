@@ -102,6 +102,7 @@ public class HubContractSnapshotTests
     [
         "ChangeDeviceCommand(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "ChangeVolumeCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CrossfadeCompleteAtCommand(System.Nullable<System.Guid>, System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "CrossfadeCompleteCommand(System.Nullable<System.Guid>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "CrossfadeStartCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "CurrentTimeCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",

@@ -463,38 +463,78 @@ public class MusicPlaybackService
     /// <summary>
     /// Called by the active client (via <see cref="NoMercy.Api.Hubs.MusicHub.CrossfadeCompleteCommand"/>)
     /// once the crossfade has finished and the new track is fully playing.  Sets the server state
-    /// to the new track, resets time to zero, clears the crossfade suppression, and broadcasts
-    /// the updated state to all connected clients.
+    /// to the new track at <paramref name="positionMs"/>, clears the crossfade suppression, and
+    /// broadcasts the updated state to all connected clients.
     /// </summary>
-    public async Task CompleteCrossfade(User user, string deviceId, Guid newTrackId)
+    /// <param name="positionMs">
+    /// Where the new track is playing at that moment. Zero for a short fade. A long fade, or
+    /// audio played between the two tracks, has the new track some way in when the player
+    /// reports the join as done; starting the server's clock at zero then would put the
+    /// position, and the next PrepareCrossfade, late by that much.
+    /// </param>
+    public async Task<MusicCrossfadeCompletion> CompleteCrossfade(
+        User user,
+        string deviceId,
+        Guid newTrackId,
+        int positionMs = 0
+    )
     {
         if (!_stateManager.TryGetValue(user.Id, out MusicPlayerState? state))
-            return;
+            return MusicCrossfadeCompletion.Ignored;
 
         // Only accept from the device that started the crossfade.
         if (state.CrossfadeDeviceId != deviceId)
-            return;
+            return MusicCrossfadeCompletion.Ignored;
 
-        // Locate the new track.  It must be at the head of the upcoming playlist.
+        // Locate the new track. It is in the upcoming playlist, or with repeat all and nothing
+        // left to play it is the first played track, which PeekNextTrack named as the next one.
         PlaylistTrackDto? newTrack = state.Playlist.FirstOrDefault(t => t.Id == newTrackId);
+        bool wrapsRound =
+            newTrack is null
+            && state.CurrentItem is not null
+            && state is { Repeat: "all", Playlist.Count: 0, Backlog.Count: > 0 }
+            && state.Backlog[0].Id == newTrackId;
+        if (wrapsRound)
+            newTrack = state.Backlog[0];
+
         if (newTrack is null)
         {
             // Track not found — clear the flag and let the server do its own advance on the
             // next timer tick (Time is already >= Duration at this point).
             state.IsCrossfading = false;
             state.CrossfadeDeviceId = null;
-            return;
+            return MusicCrossfadeCompletion.UnknownTrack;
         }
+
+        int newTrackDurationMs = newTrack.Duration.ToMilliSeconds();
+        if (newTrackDurationMs > 0 && positionMs > newTrackDurationMs)
+            return MusicCrossfadeCompletion.PositionOutsideTrack;
 
         RemoveTimer(user.Id);
 
-        state.SkipTo(state.Playlist.IndexOf(newTrack), newTrack);
+        if (wrapsRound)
+        {
+            // The same step the tick takes when the last track of a repeat-all list ends.
+            state.Backlog.Add(state.CurrentItem!);
+            state.WrapBacklogIntoPlaylist();
+            state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
+        }
+        else
+        {
+            state.SkipTo(state.Playlist.IndexOf(newTrack), newTrack);
+        }
+
+        if (positionMs > 0)
+            state.SetPosition(positionMs);
+
         state.CrossfadeSignalSent = false;
         state.IsCrossfading = false;
         state.CrossfadeDeviceId = null;
 
         await UpdatePlaybackState(user, state);
         StartPlaybackTimer(user);
+
+        return MusicCrossfadeCompletion.Completed;
     }
 
     public void DebouncedUpdatePlaybackState(User user, MusicPlayerState state)
