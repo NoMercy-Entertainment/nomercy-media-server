@@ -13,7 +13,7 @@
 
     <!-- Empty unless the caller (CI: -p:Version) gave a version; see build/LocalVersion.targets. -->
     <NmVersionGiven>$(Version)</NmVersionGiven>
-    <Version>0.1.675</Version>
+    <Version>0.1.676</Version>
 
     <!--
       The plugin packages version with the contract, not with the server. A

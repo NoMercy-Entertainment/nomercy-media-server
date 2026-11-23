@@ -41,10 +41,9 @@ public class ServerCastWaker(
     /// <summary>
     /// Dispatches a Cast launch at <paramref name="tv" />.
     ///
-    /// Returns false only when there is no address to dial. The launch is
-    /// best-effort — whether the TV actually came up is answered by it reappearing
-    /// on the bus, which is what the caller waits on, so a dispatched launch is
-    /// reported the same way a bus wake is.
+    /// Returns true only when the launch was sent to the receiver. No address, no
+    /// receiver found and a failed launch all return false. Whether the TV then
+    /// came up is answered by it reappearing on the bus, which the caller waits on.
     /// </summary>
     public async Task<bool> WakeAsync(
         Device tv,
@@ -98,12 +97,12 @@ public class ServerCastWaker(
 
         if (outcome != CastLaunchOutcome.Launched)
             logger.LogWarning(
-                "[ServerCastWaker] '{Name}' at {TargetIp}: the caller is told the wake was dispatched, but the launch outcome was {Outcome}",
+                "[ServerCastWaker] '{Name}' at {TargetIp}: nothing was launched, outcome {Outcome}",
                 tv.Name,
                 targetIp,
                 outcome
             );
 
-        return true;
+        return outcome == CastLaunchOutcome.Launched;
     }
 }

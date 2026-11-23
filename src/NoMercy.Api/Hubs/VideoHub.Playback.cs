@@ -568,8 +568,7 @@ public partial class VideoHub
             )
                 return HubCommandResult.NotFound("Device was not found for this user.");
 
-            await ChangeDeviceCoreAsync(deviceId, connectedDevices);
-            return HubCommandResult.Success();
+            return await ChangeDeviceCoreAsync(deviceId, connectedDevices);
         }
         catch (Exception exception)
         {
@@ -578,11 +577,14 @@ public partial class VideoHub
         }
     }
 
-    private async Task ChangeDeviceCoreAsync(string? deviceId, List<Device> connectedDevices)
+    private async Task<HubCommandResult> ChangeDeviceCoreAsync(
+        string? deviceId,
+        List<Device> connectedDevices
+    )
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
-            return;
+            return HubCommandResult.Forbidden("Caller is not available.");
 
         if (string.IsNullOrEmpty(deviceId))
         {
@@ -590,7 +592,7 @@ public partial class VideoHub
                 "{Name}: [VideoHub.ChangeDeviceCommand] ignored — deviceId was null/empty",
                 user.Name
             );
-            return;
+            return HubCommandResult.Invalid("Device id is required.");
         }
 
         // Extend connected-device list with owned TVs from the Devices table —
@@ -637,21 +639,32 @@ public partial class VideoHub
             string? callerBearer = CallerBearer.From(Context);
 
             // A handoff always wakes the panel, so the target is treated as cold.
-            _ = _castPanelWakeLauncher.LaunchIfColdAsync(
-                targetIsLive: false,
-                targetIp,
-                useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
-                () =>
-                    _castTokenService.MintAsync(
-                        callerBearer: callerBearer,
-                        userId: user.Id,
-                        serverId: serverIdString,
-                        serverUrl: serverUrl,
-                        deviceId: targetUlid,
-                        intent: intent,
-                        clientLocale: locale
-                    )
-            );
+            // Not awaited: a Cast launch takes seconds and must not hold up the handoff.
+            _ = _castPanelWakeLauncher
+                .LaunchIfColdAsync(
+                    targetIsLive: false,
+                    targetIp,
+                    useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
+                    () =>
+                        _castTokenService.MintAsync(
+                            callerBearer: callerBearer,
+                            userId: user.Id,
+                            serverId: serverIdString,
+                            serverUrl: serverUrl,
+                            deviceId: targetUlid,
+                            intent: intent,
+                            clientLocale: locale
+                        )
+                )
+                .ContinueWith(
+                    task =>
+                        LogVideoCastLaunch(
+                            deviceId,
+                            UserLogText.Of(user),
+                            task.IsCompletedSuccessfully ? task.Result : CastLaunchOutcome.Failed
+                        ),
+                    TaskScheduler.Default
+                );
         }
 
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
@@ -666,13 +679,13 @@ public partial class VideoHub
         }
         else
         {
-            _logger.LogWarning(
-                "Video device change to {DeviceId} not applied: user={User} has no playback state, ChangeDevice was not sent",
+            _logger.LogInformation(
+                "Video device {DeviceId} chosen user={User} without playback: no playback was moved",
                 deviceId,
                 UserLogText.Of(user)
             );
             await _videoPlaybackService.UpdatePlaybackState(user, playerState);
-            return;
+            return HubCommandResult.NoPlaybackMoved();
         }
 
         EventPayload<BroadcastEventPayload<VideoEventType>> payload = new()
@@ -692,6 +705,24 @@ public partial class VideoHub
         };
 
         await _clientMessenger.SendTo("ChangeDevice", "videoHub", user.Id, payload);
+
+        return HubCommandResult.Success();
+    }
+
+    private void LogVideoCastLaunch(string deviceId, string user, CastLaunchOutcome outcome)
+    {
+        _logger.Log(
+            outcome switch
+            {
+                CastLaunchOutcome.Launched => LogLevel.Information,
+                CastLaunchOutcome.Failed => LogLevel.Error,
+                _ => LogLevel.Warning,
+            },
+            "Video cast launch to {DeviceId} user={User}: {Outcome}",
+            deviceId,
+            user,
+            outcome
+        );
     }
 
     private static HubCommandResult? ValidateProgressRequest(VideoProgressRequest? request)
