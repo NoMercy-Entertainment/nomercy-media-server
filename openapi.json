@@ -8114,6 +8114,36 @@
         }
       }
     },
+    "/manage/loglevel": {
+      "post": {
+        "tags": [
+          "Management"
+        ],
+        "parameters": [
+          {
+            "name": "level",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/LogEventLevel"
+            }
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "description": "The requested API version",
+            "schema": {
+              "type": "string",
+              "default": "1.0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/manage/restart": {
       "post": {
         "tags": [

@@ -34,6 +34,7 @@ internal static class Program
         rootCommand.Subcommands.Add(LogsCommand.Create(pipeOption, clientFactory));
         rootCommand.Subcommands.Add(StopCommand.Create(pipeOption, clientFactory));
         rootCommand.Subcommands.Add(RestartCommand.Create(pipeOption, clientFactory));
+        rootCommand.Subcommands.Add(LogLevelCommand.Create(pipeOption, clientFactory));
         rootCommand.Subcommands.Add(ConfigCommand.Create(pipeOption, clientFactory));
         rootCommand.Subcommands.Add(PluginCommand.Create(pipeOption, clientFactory));
         rootCommand.Subcommands.Add(QueueCommand.Create(pipeOption, clientFactory));
