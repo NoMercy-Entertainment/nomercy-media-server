@@ -87,6 +87,31 @@ public class VideoPlayerStateFactory
         };
     }
 
+    /// <summary>A session with an active device and nothing loaded (S1 CLAIMED).</summary>
+    public static VideoPlayerState CreateClaimed(string deviceId, int volumePercentage)
+    {
+        return new()
+        {
+            DeviceId = deviceId,
+            VolumePercentage = volumePercentage,
+            PlayState = false,
+            CurrentList = new("/home", UriKind.Relative),
+            Actions = new()
+            {
+                Disallows = new()
+                {
+                    Next = true,
+                    Previous = true,
+                    Muting = true,
+                    Pausing = true,
+                    Resuming = true,
+                    Seeking = true,
+                    Stopping = true,
+                },
+            },
+        };
+    }
+
     private static PlaybackPreference? FindPlaybackPreference(
         User userPreference,
         string id,

@@ -684,7 +684,16 @@ public partial class VideoHub
                 deviceId,
                 UserLogText.Of(user)
             );
-            await _videoPlaybackService.UpdatePlaybackState(user, playerState);
+            VideoPlayerState claimed = VideoPlayerStateFactory.CreateClaimed(
+                deviceId,
+                connectedDevices
+                    .FirstOrDefault(d =>
+                        d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+                    )
+                    ?.VolumePercent ?? Device.DefaultVolumePercent
+            );
+            _videoPlayerStateManager.UpdateState(user.Id, claimed);
+            await _videoPlaybackService.UpdatePlaybackState(user, claimed);
             return HubCommandResult.NoPlaybackMoved();
         }
 
