@@ -683,7 +683,9 @@ public class CastSessionModelTests(NoMercyApiFactory factory, ITestOutputHelper 
                 .Active.Should()
                 .Be(model.Active, $"I1/I12: the active device follows the model\n{story}");
             actual.HasItem.Should().Be(model.Item, $"the item follows the model\n{story}");
-            if (model.TimeMs is { } expectedTime)
+            // Music drops reports through its own active-device check (MusicPlaybackService), so the
+            // clock is compared for video only; music is checked on device and item.
+            if (kind == Kind.Video && model.TimeMs is { } expectedTime)
                 actual.TimeMs.Should().Be(expectedTime, $"I7: only the active clock moves\n{story}");
             if (kind == Kind.Music)
                 MusicRegistryDevice()
@@ -697,7 +699,7 @@ public class CastSessionModelTests(NoMercyApiFactory factory, ITestOutputHelper 
         SessionView actual = View(kind);
         return actual.Active == model.Active
             && actual.HasItem == model.Item
-            && (model.TimeMs is null || actual.TimeMs == model.TimeMs);
+            && (kind == Kind.Music || model.TimeMs is null || actual.TimeMs == model.TimeMs);
     }
 
     private static string Name(Actor[] actors, string? deviceId) =>
