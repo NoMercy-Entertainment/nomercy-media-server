@@ -164,8 +164,14 @@ public static class HostFolderPath
             char current = value[index];
             char next = value[index + 1];
 
+            // A second share root follows the folder's own separator (three in a row); two is a doubled separator.
             if (IsSeparator(current) && IsSeparator(next))
-                return index;
+            {
+                if (index + 2 < value.Length && IsSeparator(value[index + 2]))
+                    return index;
+                index++;
+                continue;
+            }
 
             if (
                 next == ':'
