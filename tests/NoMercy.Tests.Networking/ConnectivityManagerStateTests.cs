@@ -562,6 +562,47 @@ public sealed class ConnectivityManagerStateTests : IDisposable
     }
 
     [Fact]
+    public async Task EvaluateAsync_WithSkipRegisterSwitch_NeverTriesATunnel()
+    {
+        string? previous = Environment.GetEnvironmentVariable(
+            ServerRegistrationSwitch.VariableName
+        );
+        Environment.SetEnvironmentVariable(ServerRegistrationSwitch.VariableName, "true");
+        try
+        {
+            StubStrategy portForward = new(
+                "PortForward",
+                1,
+                ConnectivityType.PortForward,
+                succeeds: false
+            );
+            StubStrategy named = new(
+                "CloudflareTunnel",
+                3,
+                ConnectivityType.CloudflareTunnel,
+                succeeds: true
+            );
+            StubStrategy quick = new(
+                "QuickTunnel",
+                4,
+                ConnectivityType.QuickTunnel,
+                succeeds: true
+            );
+            ConnectivityManager manager = BuildManager(portForward, named, quick);
+
+            await manager.EvaluateAsync(CancellationToken.None);
+
+            Assert.True(portForward.WasAttempted);
+            Assert.False(named.WasAttempted);
+            Assert.False(quick.WasAttempted);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ServerRegistrationSwitch.VariableName, previous);
+        }
+    }
+
+    [Fact]
     public async Task EvaluateAsync_AVerifiedPortForward_IsNeverReplacedByTheQuickTunnel()
     {
         ConnectivityStatus status = new();

@@ -50,7 +50,7 @@ public class VerifyCommandTests : IDisposable
           "name": "Internet Radio",
           "description": "Radio.",
           "version": "2.0.0",
-          "targetAbi": "12.0",
+          "targetAbi": "13.0",
           "assembly": "Radio.dll",
           "capabilities": {
             "rest": true,
@@ -96,11 +96,31 @@ public class VerifyCommandTests : IDisposable
             .ContainSingle("every other finding below a broken manifest would be a guess");
     }
 
+    /// <summary>
+    /// Thirteen removed members and renamed nothing, so a plugin built
+    /// against twelve still loads. The author is told, and the run passes.
+    /// </summary>
+    [Fact]
+    public async Task An_abi_one_major_behind_that_still_loads_is_advice_only()
+    {
+        ScanReport report = await VerifyCommand.RunAsync(
+            Write(Clean.Replace("\"targetAbi\": \"13.0\"", "\"targetAbi\": \"12.0\""))
+        );
+
+        PluginAbi.IsCompatible("12.0").Should().BeTrue();
+        report.ExitCode.Should().Be(0);
+        report
+            .Refusals.Should()
+            .ContainSingle()
+            .Which.Severity.Should()
+            .Be(PluginRefusalSeverity.Degraded);
+    }
+
     [Fact]
     public async Task An_abi_two_majors_behind_is_blocked()
     {
         ScanReport report = await VerifyCommand.RunAsync(
-            Write(Clean.Replace("\"targetAbi\": \"12.0\"", "\"targetAbi\": \"9.0\""))
+            Write(Clean.Replace("\"targetAbi\": \"13.0\"", "\"targetAbi\": \"9.0\""))
         );
 
         report.ExitCode.Should().Be(1);
@@ -122,7 +142,7 @@ public class VerifyCommandTests : IDisposable
         ScanReport report = await VerifyCommand.RunAsync(
             Write(
                 Clean.Replace(
-                    "\"targetAbi\": \"12.0\"",
+                    "\"targetAbi\": \"13.0\"",
                     $"\"targetAbi\": \"{PluginAbi.Oldest.Major - 1}.0\""
                 )
             )
@@ -278,7 +298,7 @@ public class VerifyCommandTests : IDisposable
     public async Task The_json_output_is_what_a_build_step_reads()
     {
         ScanReport report = await VerifyCommand.RunAsync(
-            Write(Clean.Replace("\"targetAbi\": \"12.0\"", "\"targetAbi\": \"9.0\""))
+            Write(Clean.Replace("\"targetAbi\": \"13.0\"", "\"targetAbi\": \"9.0\""))
         );
         StringWriter writer = new();
 

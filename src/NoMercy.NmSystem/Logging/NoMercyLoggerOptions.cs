@@ -27,6 +27,30 @@ public sealed class NoMercyLoggerOptions
     public Dictionary<string, LogLevel> CategoryLevels { get; } =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The default level of the session and cast categories.</summary>
+    public static readonly IReadOnlyDictionary<string, LogLevel> DefaultCategoryLevels =
+        new Dictionary<string, LogLevel>
+        {
+            ["session"] = LogLevel.Information,
+            ["cast"] = LogLevel.Information,
+        };
+
+    public const string CategoryLevelVariablePrefix = "NOMERCY_LOG_LEVEL_";
+
+    /// <summary>Sets the defaults, then applies <c>NOMERCY_LOG_LEVEL_{KEY}</c> per category.</summary>
+    public void ApplyEnvironment(Func<string, string?> getVariable)
+    {
+        foreach ((string key, LogLevel level) in DefaultCategoryLevels)
+            CategoryLevels[key] = level;
+
+        foreach (string key in LogCategories.Keys)
+        {
+            string? value = getVariable(CategoryLevelVariablePrefix + key.ToUpperInvariant());
+            if (Enum.TryParse(value?.Trim(), ignoreCase: true, out LogLevel level))
+                CategoryLevels[key] = level;
+        }
+    }
+
     /// <summary>Force colour on/off. Null auto-detects (off when redirected or NO_COLOR is set).</summary>
     public bool? Color { get; set; }
 

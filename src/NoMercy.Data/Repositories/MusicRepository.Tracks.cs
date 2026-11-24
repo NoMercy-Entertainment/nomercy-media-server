@@ -119,51 +119,6 @@ public partial class MusicRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<List<TrackAudioAnalysis>> GetTrackAudioAnalysisAsync(
-        IReadOnlyCollection<Guid> trackIds,
-        CancellationToken ct = default
-    )
-    {
-        if (trackIds.Count == 0)
-            return [];
-
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        return await mediaContext
-            .TrackAudioAnalysis.AsNoTracking()
-            .Where(analysis =>
-                trackIds.Contains(analysis.TrackId) && analysis.State == AudioAnalysisState.Ok
-            )
-            .ToListAsync(ct);
-    }
-
-    public async Task<TrackAnalysisBundle> GetTrackAnalysisBundleAsync(
-        IReadOnlyCollection<Guid> trackIds,
-        CancellationToken ct = default
-    )
-    {
-        if (trackIds.Count == 0)
-            return new([], [], []);
-
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-
-        List<TrackAudioAnalysis> analysis = await mediaContext
-            .TrackAudioAnalysis.AsNoTracking()
-            .Where(row => trackIds.Contains(row.TrackId) && row.State == AudioAnalysisState.Ok)
-            .ToListAsync(ct);
-
-        List<TrackDjAnalysis> dj = await mediaContext
-            .TrackDjAnalysis.AsNoTracking()
-            .Where(row => trackIds.Contains(row.TrackId) && row.State == AudioAnalysisState.Ok)
-            .ToListAsync(ct);
-
-        List<TrackStem> stems = await mediaContext
-            .TrackStems.AsNoTracking()
-            .Where(row => trackIds.Contains(row.TrackId))
-            .ToListAsync(ct);
-
-        return new(analysis, dj, stems);
-    }
-
     public async Task<Lyric[]?> UpdateTrackLyricsAsync(
         Track track,
         string lyricsJson,

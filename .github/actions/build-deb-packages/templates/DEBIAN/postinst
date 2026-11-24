@@ -6,7 +6,32 @@ fi
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 fi
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user daemon-reload >/dev/null 2>&1 || true
+
+# The units are user units, and dpkg runs this script as root. A plain
+# "systemctl --user" here talks to root's own manager and does nothing for the
+# people who use the server. Reach each logged-in user's manager instead.
+if [ "$1" = "configure" ]; then
+    if [ -n "$2" ]; then
+        # Upgrade: reload the units and restart a server that is running, so it
+        # runs the new files. try-restart leaves a stopped server stopped.
+        if command -v systemctl >/dev/null 2>&1 && command -v loginctl >/dev/null 2>&1; then
+            for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+                systemctl --user --machine="${user}@" daemon-reload >/dev/null 2>&1 || true
+                systemctl --user --machine="${user}@" try-restart nomercymediaserver.service >/dev/null 2>&1 || true
+            done
+        fi
+    else
+        # The server is a user unit. Without lingering, systemd stops it when the
+        # user's last session ends and does not start it at boot. Enable lingering
+        # for the person who ran the install (sudo sets SUDO_USER).
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ] && command -v loginctl >/dev/null 2>&1; then
+            loginctl enable-linger "$SUDO_USER" >/dev/null 2>&1 || true
+        fi
+        echo "NoMercy is installed. To start it as your user, run:"
+        echo "    systemctl --user enable --now nomercymediaserver.service"
+        echo "A user service stops at logout and does not start at boot unless lingering is on."
+        echo "To keep the server running without a login session, run once:"
+        echo "    sudo loginctl enable-linger <your user>"
+    fi
 fi
 exit 0

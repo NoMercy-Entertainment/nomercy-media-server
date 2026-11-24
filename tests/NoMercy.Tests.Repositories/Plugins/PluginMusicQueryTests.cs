@@ -12,7 +12,6 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Data.Plugins;
 using NoMercy.Database;
@@ -24,48 +23,21 @@ namespace NoMercy.Tests.Repositories.Plugins;
 
 public class PluginMusicQueryTests : IDisposable
 {
-    // The DJ analyzer version the "needs analysis" tests ask for. Rows built
-    // against an older or newer value exercise the version-mismatch branches.
-    private const int CurrentDjVersion = 3;
-    private const string StemProducerVersion = "spleeter-2stems-f16@v1.0.41";
-
     private readonly SqliteConnection _connection;
+
     private readonly DbContextOptions<MediaContext> _options;
+
     private readonly Ulid _libraryId = Ulid.NewUlid();
 
-    // A second library, kept separate from _libraryId, so seeding the DJ and
-    // stem fixtures below never changes what GetTracksAsync sees for
-    // _libraryId — those counts are asserted exactly by the existing tests.
-    private readonly Ulid _djLibraryId = Ulid.NewUlid();
+    // A second library, with a track of its own and for a track that is in two.
+    private readonly Ulid _otherLibraryId = Ulid.NewUlid();
+    private readonly Guid _trackInTheOtherLibrary = Guid.NewGuid();
 
-    private readonly Guid _analyzedTrackId = Guid.NewGuid();
-    private readonly Guid _unanalyzedTrackId = Guid.NewGuid();
-    private readonly Guid _failedTrackId = Guid.NewGuid();
+    private readonly Guid _trackWithDuration = Guid.NewGuid();
 
-    private readonly Guid _djOkTrackId = Guid.NewGuid();
-    private readonly Guid _djFailedTrackId = Guid.NewGuid();
+    private readonly Guid _trackWithoutDuration = Guid.NewGuid();
 
-    private readonly Guid _needsNoRowTrackId = Guid.NewGuid();
-    private readonly Guid _needsCurrentTrackId = Guid.NewGuid();
-    private readonly Guid _needsOlderVersionTrackId = Guid.NewGuid();
-    private readonly Guid _needsStaleBaseTrackId = Guid.NewGuid();
-    private readonly Guid _needsBaseFailedTrackId = Guid.NewGuid();
-    private readonly Guid _needsPendingTrackId = Guid.NewGuid();
-    private readonly Guid _needsFailedCurrentTrackId = Guid.NewGuid();
-
-    // Two more DJ rows for GetFailedDjAnalysisAsync: a second Failed row at the current
-    // version (so the query has a page to split) and a Failed row at the previous
-    // version (which the query must leave out). Neither has a base analysis row, so
-    // the "needs DJ analysis" fixture above keeps returning exactly what it did.
-    private readonly Guid _failedSecondTrackId = Guid.NewGuid();
-    private readonly Guid _failedOlderVersionTrackId = Guid.NewGuid();
-
-    // Stamped on the failed row a test reads back, so FailedAt can be asserted exactly.
-    private static readonly DateTime FailedAtUtc = new(2026, 9, 18, 12, 0, 0, DateTimeKind.Utc);
-
-    private readonly Guid _stemsWindowsMissingTrackId = Guid.NewGuid();
-    private readonly Guid _stemsFullMissingFromWindowsTrackId = Guid.NewGuid();
-    private readonly Guid _stemsFullPresentTrackId = Guid.NewGuid();
+    private readonly Guid _hourLongTrack = Guid.NewGuid();
 
     public PluginMusicQueryTests()
     {
@@ -89,454 +61,43 @@ public class PluginMusicQueryTests : IDisposable
                 Id = _libraryId,
                 Title = "Music",
                 Type = "music",
-                AnalyzeAudio = true,
             },
             new Library
             {
-                Id = _djLibraryId,
-                Title = "Dj Music",
+                Id = _otherLibraryId,
+                Title = "Other music",
                 Type = "music",
-                AnalyzeAudio = true,
             }
         );
 
         context.Tracks.AddRange(
             new Track
             {
-                Id = _analyzedTrackId,
-                Name = "Analyzed",
+                Id = _trackWithDuration,
+                Name = "With duration",
                 TrackNumber = 3,
                 DiscNumber = 1,
                 Duration = "03:45",
             },
-            new Track { Id = _unanalyzedTrackId, Name = "Unanalyzed" },
+            new Track { Id = _trackWithoutDuration, Name = "Without duration" },
             new Track
             {
-                Id = _failedTrackId,
-                Name = "Failed",
+                Id = _hourLongTrack,
+                Name = "Hour long",
                 Duration = "01:02:03",
-            }
+            },
+            new Track { Id = _trackInTheOtherLibrary, Name = "In the other library" }
         );
 
         context.LibraryTrack.AddRange(
-            new LibraryTrack { LibraryId = _libraryId, TrackId = _analyzedTrackId },
-            new LibraryTrack { LibraryId = _libraryId, TrackId = _unanalyzedTrackId },
-            new LibraryTrack { LibraryId = _libraryId, TrackId = _failedTrackId }
+            new LibraryTrack { LibraryId = _libraryId, TrackId = _trackWithDuration },
+            new LibraryTrack { LibraryId = _libraryId, TrackId = _trackWithoutDuration },
+            new LibraryTrack { LibraryId = _libraryId, TrackId = _hourLongTrack },
+            new LibraryTrack { LibraryId = _otherLibraryId, TrackId = _trackInTheOtherLibrary }
         );
-
-        context.TrackAudioAnalysis.AddRange(
-            new TrackAudioAnalysis
-            {
-                TrackId = _analyzedTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                Bpm = 128.0,
-                KeyName = "Am",
-                KeyCamelot = "8A",
-                KeyConfidence = 0.82,
-                IntegratedLufs = -9.4,
-                TruePeakDb = -0.3,
-                Energy = 0.71,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _failedTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Failed,
-                FailureReason = "analysis produced no measurements",
-                AnalyzedAt = DateTime.UtcNow,
-            }
-        );
-
-        SeedDjAnalysisFixture(context);
-        SeedNeedsDjAnalysisFixture(context);
-        SeedFailedDjFixture(context);
-        SeedStemsFixture(context);
 
         context.SaveChanges();
     }
-
-    /// <summary>Tracks for <c>GetDjAnalysisAsync</c>: one Ok row with every JSON
-    /// column populated, one Failed row that must never come back.</summary>
-    private void SeedDjAnalysisFixture(MediaContext context)
-    {
-        context.Tracks.AddRange(
-            new Track { Id = _djOkTrackId, Name = "Dj Ok" },
-            new Track { Id = _djFailedTrackId, Name = "Dj Failed" }
-        );
-
-        context.TrackDjAnalysis.AddRange(
-            new TrackDjAnalysis
-            {
-                TrackId = _djOkTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                DownbeatIndex = 0,
-                BeatsPerBar = 4,
-                PhraseLengthBars = 8,
-                PhraseStartsMs = "[0,32000,64000]",
-                VocalRegionsMs = "[[1000,5000],[9000,15000]]",
-                BarEnergy = "[-20.5,-18.2,-14.0]",
-                CuePoints = """[{"ms":1000,"type":"intro","direction":"mixIn","score":0.9}]""",
-                Chords = """[{"ms":0,"chord":"Am"}]""",
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackDjAnalysis
-            {
-                TrackId = _djFailedTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Failed,
-                FailureReason = "vocal detector produced no regions",
-                AnalyzedAt = DateTime.UtcNow,
-            }
-        );
-    }
-
-    /// <summary>
-    /// Tracks for <c>GetTracksNeedingDjAnalysisAsync</c>, one per branch of the
-    /// "does this track already have a current DJ row" rule.
-    /// </summary>
-    private void SeedNeedsDjAnalysisFixture(MediaContext context)
-    {
-        context.Tracks.AddRange(
-            new Track { Id = _needsNoRowTrackId, Name = "Needs: no row" },
-            new Track { Id = _needsCurrentTrackId, Name = "Needs: current" },
-            new Track { Id = _needsOlderVersionTrackId, Name = "Needs: older version" },
-            new Track { Id = _needsStaleBaseTrackId, Name = "Needs: stale base" },
-            new Track { Id = _needsBaseFailedTrackId, Name = "Needs: base failed" },
-            new Track { Id = _needsPendingTrackId, Name = "Needs: pending" },
-            new Track { Id = _needsFailedCurrentTrackId, Name = "Needs: failed current" }
-        );
-
-        context.LibraryTrack.AddRange(
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsNoRowTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsCurrentTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsOlderVersionTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsStaleBaseTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsBaseFailedTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsPendingTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsFailedCurrentTrackId }
-        );
-
-        context.TrackAudioAnalysis.AddRange(
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsNoRowTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsCurrentTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsOlderVersionTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsStaleBaseTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsBaseFailedTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Failed,
-                FailureReason = "unreadable file",
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsPendingTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackAudioAnalysis
-            {
-                TrackId = _needsFailedCurrentTrackId,
-                AnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            }
-        );
-
-        context.TrackDjAnalysis.AddRange(
-            // _needsCurrentTrackId: version and base both match, Ok — already
-            // has a current DJ row, so it must be the one track excluded.
-            new TrackDjAnalysis
-            {
-                TrackId = _needsCurrentTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            // Older DJ analyzer than requested: stale, needs redoing.
-            new TrackDjAnalysis
-            {
-                TrackId = _needsOlderVersionTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion - 1,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            // Current DJ analyzer, but computed from a base analysis that has
-            // since moved on to a newer AnalyzerVersion than this row records.
-            new TrackDjAnalysis
-            {
-                TrackId = _needsStaleBaseTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 99,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            // A run that started and never finished.
-            new TrackDjAnalysis
-            {
-                TrackId = _needsPendingTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Pending,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            // Version and base both match, but the run itself failed. This is
-            // the terminal case: retried only when the DJ analyzer version
-            // changes, never just because the sweep runs again — a bare
-            // "!= Pending" -> "== Ok" simplification here would silently
-            // reopen endless re-analysis of tracks that will never succeed.
-            new TrackDjAnalysis
-            {
-                TrackId = _needsFailedCurrentTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Failed,
-                FailureReason = "vocal detector produced no regions",
-                AnalyzedAt = DateTime.UtcNow,
-            }
-        );
-    }
-
-    /// <summary>
-    /// Tracks for <c>GetFailedDjAnalysisAsync</c>. Together with the Failed row at the
-    /// current version that <see cref="SeedNeedsDjAnalysisFixture" /> seeds, the library
-    /// holds two rows the query must return and one it must not.
-    /// </summary>
-    private void SeedFailedDjFixture(MediaContext context)
-    {
-        context.Tracks.AddRange(
-            new Track { Id = _failedSecondTrackId, Name = "Failed: second" },
-            new Track { Id = _failedOlderVersionTrackId, Name = "Failed: older version" }
-        );
-
-        context.LibraryTrack.AddRange(
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _failedSecondTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _failedOlderVersionTrackId }
-        );
-
-        context.TrackDjAnalysis.AddRange(
-            new TrackDjAnalysis
-            {
-                TrackId = _failedSecondTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Failed,
-                FailureReason = "stems MixIn: the stem model file is missing",
-                AnalyzedAt = FailedAtUtc,
-            },
-            // Failed under the previous analyzer. A version bump already re-queues it
-            // through the needs-query; the failed-rows query is about the current one.
-            new TrackDjAnalysis
-            {
-                TrackId = _failedOlderVersionTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion - 1,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Failed,
-                FailureReason = "stems MixOut: refused by an older build",
-                AnalyzedAt = FailedAtUtc,
-            }
-        );
-    }
-
-    /// <summary>Tracks for <c>GetTracksMissingStemsAsync</c> and <c>GetStemsAsync</c>.</summary>
-    private void SeedStemsFixture(MediaContext context)
-    {
-        context.Tracks.AddRange(
-            new Track { Id = _stemsWindowsMissingTrackId, Name = "Stems: windows missing" },
-            new Track
-            {
-                Id = _stemsFullMissingFromWindowsTrackId,
-                Name = "Stems: full missing from windows",
-            },
-            new Track { Id = _stemsFullPresentTrackId, Name = "Stems: full present" }
-        );
-
-        context.LibraryTrack.AddRange(
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _stemsWindowsMissingTrackId },
-            new LibraryTrack
-            {
-                LibraryId = _djLibraryId,
-                TrackId = _stemsFullMissingFromWindowsTrackId,
-            },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _stemsFullPresentTrackId }
-        );
-
-        // Every one of these tracks has an Ok DJ row: GetTracksMissingStemsAsync
-        // only ever asks about stems for a track the DJ analyzer already ran on.
-        context.TrackDjAnalysis.AddRange(
-            new TrackDjAnalysis
-            {
-                TrackId = _stemsWindowsMissingTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackDjAnalysis
-            {
-                TrackId = _stemsFullMissingFromWindowsTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            },
-            new TrackDjAnalysis
-            {
-                TrackId = _stemsFullPresentTrackId,
-                ProducerPluginId = Ulid.NewUlid(),
-                DjAnalyzerVersion = CurrentDjVersion,
-                BaseAnalyzerVersion = 1,
-                State = AudioAnalysisState.Ok,
-                AnalyzedAt = DateTime.UtcNow,
-            }
-        );
-
-        string mixInKey = NewStorageKey();
-        string mixOutKey = NewStorageKey();
-        string windowsMixInKey = NewStorageKey();
-        string fullVocalsKey = NewStorageKey();
-        string fullAccompanimentKey = NewStorageKey();
-
-        context.DerivedAudio.AddRange(
-            NewDerivedAudioRow(windowsMixInKey),
-            NewDerivedAudioRow(mixInKey),
-            NewDerivedAudioRow(mixOutKey),
-            NewDerivedAudioRow(fullVocalsKey),
-            NewDerivedAudioRow(fullAccompanimentKey)
-        );
-
-        context.TrackStems.AddRange(
-            // Windows policy needs MixIn + MixOut; this track has only MixIn.
-            new TrackStem
-            {
-                Id = Ulid.NewUlid(),
-                TrackId = _stemsWindowsMissingTrackId,
-                Kind = "vocals",
-                Coverage = StemCoverage.MixIn,
-                WindowStartMs = 0,
-                WindowEndMs = 45000,
-                Format = "opus",
-                SampleRate = 48000,
-                StorageKey = windowsMixInKey,
-                ProducerVersion = StemProducerVersion,
-                CreatedAt = DateTime.UtcNow,
-            },
-            // Full policy needs a Full stem; this track has both windows but no
-            // Full row, so Full policy still calls it missing.
-            new TrackStem
-            {
-                Id = Ulid.NewUlid(),
-                TrackId = _stemsFullMissingFromWindowsTrackId,
-                Kind = "vocals",
-                Coverage = StemCoverage.MixIn,
-                WindowStartMs = 0,
-                WindowEndMs = 45000,
-                Format = "opus",
-                SampleRate = 48000,
-                StorageKey = mixInKey,
-                ProducerVersion = StemProducerVersion,
-                CreatedAt = DateTime.UtcNow,
-            },
-            new TrackStem
-            {
-                Id = Ulid.NewUlid(),
-                TrackId = _stemsFullMissingFromWindowsTrackId,
-                Kind = "vocals",
-                Coverage = StemCoverage.MixOut,
-                WindowStartMs = 135000,
-                WindowEndMs = 180000,
-                Format = "opus",
-                SampleRate = 48000,
-                StorageKey = mixOutKey,
-                ProducerVersion = StemProducerVersion,
-                CreatedAt = DateTime.UtcNow,
-            },
-            // Full policy is satisfied: a Full vocals stem exists. A second,
-            // different-kind stem proves GetStemsAsync returns every kind.
-            new TrackStem
-            {
-                Id = Ulid.NewUlid(),
-                TrackId = _stemsFullPresentTrackId,
-                Kind = "vocals",
-                Coverage = StemCoverage.Full,
-                Format = "opus",
-                SampleRate = 48000,
-                StorageKey = fullVocalsKey,
-                ProducerVersion = StemProducerVersion,
-                Engine = "spleeter",
-                CreatedAt = DateTime.UtcNow,
-            },
-            new TrackStem
-            {
-                Id = Ulid.NewUlid(),
-                TrackId = _stemsFullPresentTrackId,
-                Kind = "accompaniment",
-                Coverage = StemCoverage.Full,
-                Format = "opus",
-                SampleRate = 48000,
-                StorageKey = fullAccompanimentKey,
-                ProducerVersion = StemProducerVersion,
-                CreatedAt = DateTime.UtcNow,
-            }
-        );
-    }
-
-    private static DerivedAudio NewDerivedAudioRow(string key) =>
-        new()
-        {
-            Key = key,
-            ContentType = "audio/opus",
-            Bytes = 10,
-            CreatedAt = DateTime.UtcNow,
-            LastUsedAt = DateTime.UtcNow,
-        };
-
-    private static string NewStorageKey() =>
-        Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
 
     public void Dispose()
     {
@@ -551,7 +112,7 @@ public class PluginMusicQueryTests : IDisposable
             .Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        return new PluginMusicQuery(factory.Object, NullLogger<PluginMusicQuery>.Instance);
+        return new PluginMusicQuery(factory.Object);
     }
 
     /// <summary>
@@ -583,7 +144,7 @@ public class PluginMusicQueryTests : IDisposable
             .GetTracksAsync(_libraryId.ToString());
 
         tracks.Should().HaveCount(3);
-        tracks.Select(track => track.Id).Should().Contain(_analyzedTrackId);
+        tracks.Select(track => track.Id).Should().Contain(_trackWithDuration);
     }
 
     /// <summary>
@@ -597,7 +158,7 @@ public class PluginMusicQueryTests : IDisposable
         IReadOnlyList<PluginTrack> tracks = await CreateQuery()
             .GetTracksAsync(_libraryId.ToString());
 
-        tracks.Single(track => track.Id == _analyzedTrackId).DurationSeconds.Should().Be(225.0);
+        tracks.Single(track => track.Id == _trackWithDuration).DurationSeconds.Should().Be(225.0);
     }
 
     /// <summary>
@@ -610,7 +171,7 @@ public class PluginMusicQueryTests : IDisposable
         IReadOnlyList<PluginTrack> tracks = await CreateQuery()
             .GetTracksAsync(_libraryId.ToString());
 
-        tracks.Single(track => track.Id == _failedTrackId).DurationSeconds.Should().Be(3723.0);
+        tracks.Single(track => track.Id == _hourLongTrack).DurationSeconds.Should().Be(3723.0);
     }
 
     [Fact]
@@ -619,7 +180,7 @@ public class PluginMusicQueryTests : IDisposable
         IReadOnlyList<PluginTrack> tracks = await CreateQuery()
             .GetTracksAsync(_libraryId.ToString());
 
-        tracks.Single(track => track.Id == _unanalyzedTrackId).DurationSeconds.Should().BeNull();
+        tracks.Single(track => track.Id == _trackWithoutDuration).DurationSeconds.Should().BeNull();
     }
 
     [Fact]
@@ -676,7 +237,7 @@ public class PluginMusicQueryTests : IDisposable
                 }
             );
             context.AlbumTrack.Add(
-                new AlbumTrack { AlbumId = albumId, TrackId = _analyzedTrackId }
+                new AlbumTrack { AlbumId = albumId, TrackId = _trackWithDuration }
             );
             context.Artists.Add(
                 new Artist
@@ -687,22 +248,22 @@ public class PluginMusicQueryTests : IDisposable
                 }
             );
             context.ArtistTrack.Add(
-                new ArtistTrack { ArtistId = artistId, TrackId = _analyzedTrackId }
+                new ArtistTrack { ArtistId = artistId, TrackId = _trackWithDuration }
             );
             context.SaveChanges();
         }
 
         PluginMusicQuery query = CreateQuery();
 
-        IReadOnlyList<PluginTrack> byId = await query.GetTracksByIdAsync([_analyzedTrackId]);
+        IReadOnlyList<PluginTrack> byId = await query.GetTracksByIdAsync([_trackWithDuration]);
 
         PluginTrack track = byId.Should().ContainSingle().Subject;
         track
             .Should()
             .Be(
                 new PluginTrack(
-                    _analyzedTrackId,
-                    "Analyzed",
+                    _trackWithDuration,
+                    "With duration",
                     "The Album",
                     "The Artist",
                     3,
@@ -710,10 +271,15 @@ public class PluginMusicQueryTests : IDisposable
                     225.0,
                     _libraryId.ToString()
                 )
+                {
+                    AlbumId = albumId,
+                    Albums = [new(albumId, "The Album")],
+                    Artists = [new(artistId, "The Artist")],
+                }
             );
 
         IReadOnlyList<PluginTrack> page = await query.GetTracksAsync(_libraryId.ToString());
-        track.Should().Be(page.Single(listed => listed.Id == _analyzedTrackId));
+        track.Should().Be(page.Single(listed => listed.Id == _trackWithDuration));
     }
 
     [Fact]
@@ -725,14 +291,14 @@ public class PluginMusicQueryTests : IDisposable
 
         IReadOnlyList<PluginTrack> mixed = await query.GetTracksByIdAsync([
             Guid.NewGuid(),
-            _failedTrackId,
+            _hourLongTrack,
             Guid.NewGuid(),
-            _unanalyzedTrackId,
+            _trackWithoutDuration,
         ]);
         mixed
             .Select(track => track.Id)
             .Should()
-            .BeEquivalentTo([_failedTrackId, _unanalyzedTrackId]);
+            .BeEquivalentTo([_hourLongTrack, _trackWithoutDuration]);
     }
 
     /// <summary>
@@ -760,9 +326,9 @@ public class PluginMusicQueryTests : IDisposable
         }
 
         IReadOnlyList<PluginTrack> tracks = await CreateQuery()
-            .GetTracksByIdAsync([missingId, _analyzedTrackId]);
+            .GetTracksByIdAsync([missingId, _trackWithDuration]);
 
-        tracks.Select(track => track.Id).Should().Equal(_analyzedTrackId);
+        tracks.Select(track => track.Id).Should().Equal(_trackWithDuration);
     }
 
     [Fact]
@@ -776,7 +342,13 @@ public class PluginMusicQueryTests : IDisposable
     {
         PluginMusicQuery query = CreateQuery();
 
-        (await query.GetTracksByIdAsync([_analyzedTrackId, _analyzedTrackId, _analyzedTrackId]))
+        (
+            await query.GetTracksByIdAsync([
+                _trackWithDuration,
+                _trackWithDuration,
+                _trackWithDuration,
+            ])
+        )
             .Should()
             .ContainSingle();
 
@@ -784,22 +356,22 @@ public class PluginMusicQueryTests : IDisposable
         using (MediaContext context = new(_options))
         {
             context.LibraryTrack.Add(
-                new LibraryTrack { LibraryId = _djLibraryId, TrackId = _analyzedTrackId }
+                new LibraryTrack { LibraryId = _otherLibraryId, TrackId = _trackWithDuration }
             );
             context.SaveChanges();
         }
 
         IReadOnlyList<PluginTrack> inBoth = await query.GetTracksByIdAsync([
-            _analyzedTrackId,
-            _analyzedTrackId,
+            _trackWithDuration,
+            _trackWithDuration,
         ]);
 
         inBoth.Should().HaveCount(2);
-        inBoth.Should().OnlyContain(track => track.Id == _analyzedTrackId);
+        inBoth.Should().OnlyContain(track => track.Id == _trackWithDuration);
         inBoth
             .Select(track => track.LibraryId)
             .Should()
-            .BeEquivalentTo([_libraryId.ToString(), _djLibraryId.ToString()]);
+            .BeEquivalentTo([_libraryId.ToString(), _otherLibraryId.ToString()]);
     }
 
     [Fact]
@@ -830,15 +402,15 @@ public class PluginMusicQueryTests : IDisposable
 
         IReadOnlyList<PluginTrack> pastTheCap = await query.GetTracksByIdAsync([
             .. strangers,
-            _analyzedTrackId,
+            _trackWithDuration,
         ]);
         IReadOnlyList<PluginTrack> insideTheCap = await query.GetTracksByIdAsync([
             .. strangers.Take(page - 1),
-            _analyzedTrackId,
+            _trackWithDuration,
         ]);
 
         pastTheCap.Should().BeEmpty();
-        insideTheCap.Select(track => track.Id).Should().Equal(_analyzedTrackId);
+        insideTheCap.Select(track => track.Id).Should().Equal(_trackWithDuration);
     }
 
     /// <summary>
@@ -850,313 +422,6 @@ public class PluginMusicQueryTests : IDisposable
     {
         IPluginMusicQuery older = new Mock<IPluginMusicQuery> { CallBase = true }.Object;
 
-        (await older.GetTracksByIdAsync([_analyzedTrackId])).Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetAnalysisAsync_ReturnsTheMeasurements()
-    {
-        IReadOnlyList<PluginTrackAudioAnalysis> analysis = await CreateQuery()
-            .GetAnalysisAsync([_analyzedTrackId]);
-
-        analysis.Should().ContainSingle();
-        analysis[0].Bpm.Should().Be(128.0);
-        analysis[0].KeyCamelot.Should().Be("8A");
-        analysis[0].IntegratedLufs.Should().Be(-9.4);
-        analysis[0].AnalyzerVersion.Should().Be(1);
-    }
-
-    /// <summary>
-    /// A failed row is an absence to a plugin, not a set of null readings it has
-    /// to learn to distinguish from a real measurement of zero.
-    /// </summary>
-    [Fact]
-    public async Task GetAnalysisAsync_OmitsRowsThatFailed()
-    {
-        IReadOnlyList<PluginTrackAudioAnalysis> analysis = await CreateQuery()
-            .GetAnalysisAsync([_failedTrackId]);
-
-        analysis.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetAnalysisAsync_OmitsTracksWithNoAnalysisAtAll()
-    {
-        IReadOnlyList<PluginTrackAudioAnalysis> analysis = await CreateQuery()
-            .GetAnalysisAsync([_unanalyzedTrackId]);
-
-        analysis.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetAnalysisAsync_ReturnsOnlyTheAnalyzedOnesFromAMixedRequest()
-    {
-        IReadOnlyList<PluginTrackAudioAnalysis> analysis = await CreateQuery()
-            .GetAnalysisAsync([_analyzedTrackId, _unanalyzedTrackId, _failedTrackId]);
-
-        analysis.Should().ContainSingle();
-        analysis[0].TrackId.Should().Be(_analyzedTrackId);
-    }
-
-    [Fact]
-    public async Task GetAnalysisAsync_ReturnsNothingForAnEmptyRequest()
-    {
-        IReadOnlyList<PluginTrackAudioAnalysis> analysis = await CreateQuery().GetAnalysisAsync([]);
-
-        analysis.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetDjAnalysisAsync_ReturnsOkRowsWithTypedLists()
-    {
-        IReadOnlyList<PluginTrackDjAnalysis> analysis = await CreateQuery()
-            .GetDjAnalysisAsync([_djOkTrackId, _djFailedTrackId, _unanalyzedTrackId]);
-
-        // Neither the Failed row nor the track with no DJ row at all comes
-        // back, even though both were asked for.
-        analysis.Should().ContainSingle();
-        PluginTrackDjAnalysis row = analysis[0];
-
-        row.TrackId.Should().Be(_djOkTrackId);
-        row.DjAnalyzerVersion.Should().Be(CurrentDjVersion);
-        row.BaseAnalyzerVersion.Should().Be(1);
-        row.DownbeatIndex.Should().Be(0);
-        row.BeatsPerBar.Should().Be(4);
-        row.PhraseLengthBars.Should().Be(8);
-        row.PhraseStartsMs.Should().Equal(0, 32000, 64000);
-        row.VocalRegionsMs.Should().BeEquivalentTo([new[] { 1000, 5000 }, new[] { 9000, 15000 }]);
-        row.BarEnergy.Should().Equal(-20.5, -18.2, -14.0);
-
-        row.CuePoints.Should().ContainSingle();
-        row.CuePoints[0].Ms.Should().Be(1000);
-        row.CuePoints[0].Type.Should().Be("intro");
-        row.CuePoints[0].Direction.Should().Be("mixIn");
-        row.CuePoints[0].Score.Should().Be(0.9);
-
-        row.Chords.Should().ContainSingle();
-        row.Chords[0].Ms.Should().Be(0);
-        row.Chords[0].Chord.Should().Be("Am");
-    }
-
-    [Fact]
-    public async Task GetStemsAsync_ReturnsStemsOfTheGivenTracks()
-    {
-        IReadOnlyList<PluginTrackStem> stems = await CreateQuery()
-            .GetStemsAsync([_stemsFullPresentTrackId]);
-
-        stems.Should().HaveCount(2);
-        stems.Should().OnlyContain(stem => stem.TrackId == _stemsFullPresentTrackId);
-        stems.Should().OnlyContain(stem => stem.Coverage == PluginStemCoverage.Full);
-        stems.Select(stem => stem.Kind).Should().BeEquivalentTo(["vocals", "accompaniment"]);
-
-        // The engine as the register holds it; null where it was never known.
-        stems.Single(stem => stem.Kind == "vocals").Engine.Should().Be("spleeter");
-        stems.Single(stem => stem.Kind == "accompaniment").Engine.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetTracksNeedingDjAnalysisAsync_ReturnsTracksWithABaseVerdictAndNoCurrentDjRow()
-    {
-        IReadOnlyList<Guid> needing = await CreateQuery()
-            .GetTracksNeedingDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, take: 1000);
-
-        needing
-            .Should()
-            .Contain([
-                _needsNoRowTrackId,
-                _needsOlderVersionTrackId,
-                _needsStaleBaseTrackId,
-                _needsPendingTrackId,
-            ]);
-        needing.Should().NotContain(_needsCurrentTrackId);
-        needing.Should().NotContain(_needsBaseFailedTrackId);
-        // A Failed DJ row at the current DjAnalyzerVersion and a matching
-        // BaseAnalyzerVersion is a terminal verdict, not stale work: it must
-        // not be picked up again just because it isn't Ok.
-        needing.Should().NotContain(_needsFailedCurrentTrackId);
-    }
-
-    [Fact]
-    public async Task GetTracksNeedingDjAnalysisAsync_BadLibraryIdReturnsEmpty()
-    {
-        IReadOnlyList<Guid> needing = await CreateQuery()
-            .GetTracksNeedingDjAnalysisAsync("not-a-valid-ulid", CurrentDjVersion);
-
-        needing.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetTracksMissingStemsAsync_HonoursThePolicy()
-    {
-        PluginMusicQuery query = CreateQuery();
-
-        IReadOnlyList<Guid> windowsMissing = await query.GetTracksMissingStemsAsync(
-            _djLibraryId.ToString(),
-            StemProducerVersion,
-            PluginStemPolicy.Windows,
-            take: 1000
-        );
-        windowsMissing.Should().Contain(_stemsWindowsMissingTrackId);
-        // A Full stem satisfies every required window by itself: a track
-        // with only a Full stem is not missing anything under Windows either.
-        windowsMissing.Should().NotContain(_stemsFullPresentTrackId);
-
-        IReadOnlyList<Guid> fullMissing = await query.GetTracksMissingStemsAsync(
-            _djLibraryId.ToString(),
-            StemProducerVersion,
-            PluginStemPolicy.Full,
-            take: 1000
-        );
-        fullMissing.Should().Contain(_stemsFullMissingFromWindowsTrackId);
-        fullMissing.Should().NotContain(_stemsFullPresentTrackId);
-
-        IReadOnlyList<Guid> onDemand = await query.GetTracksMissingStemsAsync(
-            _djLibraryId.ToString(),
-            StemProducerVersion,
-            PluginStemPolicy.OnDemand,
-            take: 1000
-        );
-        onDemand.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetTracksMissingStemsAsync_BadLibraryIdReturnsEmpty()
-    {
-        IReadOnlyList<Guid> missing = await CreateQuery()
-            .GetTracksMissingStemsAsync(
-                "not-a-valid-ulid",
-                StemProducerVersion,
-                PluginStemPolicy.Full
-            );
-
-        missing.Should().BeEmpty();
-    }
-
-    /// <summary>
-    /// <paramref name="take" /> is clamped to at least 1 the same way
-    /// <see cref="PluginMusicQuery.GetTracksAsync" /> clamps it, so a caller
-    /// passing 0 still gets one row rather than an empty page.
-    /// </summary>
-    [Fact]
-    public async Task Take_IsClamped_LikeGetTracksAsync()
-    {
-        IReadOnlyList<Guid> clamped = await CreateQuery()
-            .GetTracksNeedingDjAnalysisAsync(
-                _djLibraryId.ToString(),
-                CurrentDjVersion,
-                skip: 0,
-                take: 0
-            );
-
-        clamped.Should().HaveCount(1);
-    }
-
-    /// <summary>Same clamp, the other library-scoped "needs" method.</summary>
-    [Fact]
-    public async Task Take_IsClamped_ForGetTracksMissingStemsAsyncToo()
-    {
-        IReadOnlyList<Guid> clamped = await CreateQuery()
-            .GetTracksMissingStemsAsync(
-                _djLibraryId.ToString(),
-                StemProducerVersion,
-                PluginStemPolicy.Full,
-                skip: 0,
-                take: 0
-            );
-
-        clamped.Should().HaveCount(1);
-    }
-
-    [Fact]
-    public async Task GetFailedDjAnalysisAsync_ReturnsTheFailedRowsAtTheAskedVersionInTheLibrary()
-    {
-        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
-            .GetFailedDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, take: 1000);
-
-        failed
-            .Select(failure => failure.TrackId)
-            .Should()
-            .BeEquivalentTo([_needsFailedCurrentTrackId, _failedSecondTrackId]);
-        // Ok and Pending rows at the current version, a Failed row at the previous
-        // version, and a Failed row whose track is in no library at all.
-        failed.Select(failure => failure.TrackId).Should().NotContain(_needsCurrentTrackId);
-        failed.Select(failure => failure.TrackId).Should().NotContain(_needsPendingTrackId);
-        failed.Select(failure => failure.TrackId).Should().NotContain(_failedOlderVersionTrackId);
-        failed.Select(failure => failure.TrackId).Should().NotContain(_djFailedTrackId);
-    }
-
-    /// <summary>
-    /// The row carries what a plugin shows an owner: why it failed, against which base
-    /// analysis, and when. The reason is the column as written; the time is the row's
-    /// own stamp, read back as UTC.
-    /// </summary>
-    [Fact]
-    public async Task GetFailedDjAnalysisAsync_CarriesTheReasonTheBaseVersionAndWhenItFailed()
-    {
-        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
-            .GetFailedDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, take: 1000);
-
-        PluginTrackDjFailure second = failed.Single(failure =>
-            failure.TrackId == _failedSecondTrackId
-        );
-
-        second.Reason.Should().Be("stems MixIn: the stem model file is missing");
-        second.BaseAnalyzerVersion.Should().Be(1);
-        second.FailedAt.Should().Be(new DateTimeOffset(FailedAtUtc));
-    }
-
-    [Fact]
-    public async Task GetFailedDjAnalysisAsync_Pages()
-    {
-        PluginMusicQuery query = CreateQuery();
-
-        IReadOnlyList<PluginTrackDjFailure> first = await query.GetFailedDjAnalysisAsync(
-            _djLibraryId.ToString(),
-            CurrentDjVersion,
-            skip: 0,
-            take: 1
-        );
-        IReadOnlyList<PluginTrackDjFailure> second = await query.GetFailedDjAnalysisAsync(
-            _djLibraryId.ToString(),
-            CurrentDjVersion,
-            skip: 1,
-            take: 1
-        );
-
-        first.Should().ContainSingle();
-        second.Should().ContainSingle();
-        first
-            .Select(failure => failure.TrackId)
-            .Concat(second.Select(failure => failure.TrackId))
-            .Should()
-            .BeEquivalentTo([_needsFailedCurrentTrackId, _failedSecondTrackId]);
-    }
-
-    [Fact]
-    public async Task GetFailedDjAnalysisAsync_ReturnsNothingForAnotherLibrary()
-    {
-        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
-            .GetFailedDjAnalysisAsync(Ulid.NewUlid().ToString(), CurrentDjVersion);
-
-        failed.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetFailedDjAnalysisAsync_BadLibraryIdReturnsEmpty()
-    {
-        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
-            .GetFailedDjAnalysisAsync("not-a-valid-ulid", CurrentDjVersion);
-
-        failed.Should().BeEmpty();
-    }
-
-    /// <summary>Same clamp as the two worklists: a caller passing 0 still gets one row.</summary>
-    [Fact]
-    public async Task Take_IsClamped_ForGetFailedDjAnalysisAsyncToo()
-    {
-        IReadOnlyList<PluginTrackDjFailure> clamped = await CreateQuery()
-            .GetFailedDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, skip: 0, take: 0);
-
-        clamped.Should().HaveCount(1);
+        (await older.GetTracksByIdAsync([_trackWithDuration])).Should().BeEmpty();
     }
 }

@@ -1,0 +1,49 @@
+name: 'Root Dockerfile build'
+
+# Issue #664: the root Dockerfile built nothing for weeks because no workflow
+# built it (it lacked Directory.Build.props, nuget.config and libs/). This job
+# builds it on every change to its inputs, so it cannot drift again. Build
+# only: no login, no push. GitHub-hosted runner, so it never queues on the
+# self-hosted fleet.
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'nuget.config'
+      - 'NoMercy.Server.sln'
+      - 'libs/**'
+      - '.github/workflows/docker-root-build.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'nuget.config'
+      - 'NoMercy.Server.sln'
+      - 'libs/**'
+      - '.github/workflows/docker-root-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # actions/checkout v7, pinned by commit digest.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Build the root Dockerfile (no push)
+        run: docker build -f Dockerfile -t nomercy-root-dockerfile-check:ci .

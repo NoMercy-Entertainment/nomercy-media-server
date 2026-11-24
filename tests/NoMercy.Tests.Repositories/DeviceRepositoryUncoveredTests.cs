@@ -102,6 +102,28 @@ public class DeviceRepositoryUncoveredTests : IDisposable
     }
 
     [Fact]
+    public async Task GetListedDevices_SkipsRetiredRows_SoOneDeviceIsListedOnce()
+    {
+        Device current = MakeDevice(suffix: "Current");
+        current.Fingerprint = "fp-current";
+        Device retired = MakeDevice(suffix: "Retired");
+        DeviceStateRepository.Retire(retired);
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.AddRange(current, retired);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext queryCtx = OpenContext();
+        DeviceRepository repository = new(queryCtx);
+
+        List<Device> result = await repository.GetListedDevices();
+
+        result.Should().ContainSingle().Which.Id.Should().Be(current.Id);
+    }
+
+    [Fact]
     public async Task AddDeviceAsync_PersistsTheDeviceForLaterRetrieval()
     {
         Device device = MakeDevice(suffix: "Added");

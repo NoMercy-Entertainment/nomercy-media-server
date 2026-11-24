@@ -4,4 +4,9 @@ To start the server:
   systemctl --user enable nomercymediaserver.service
   systemctl --user start nomercymediaserver.service
 
+The server runs as a user service. systemd stops it when your last session
+ends and does not start it at boot. To keep it running without a login,
+run this once (a server box, a NAS, an SSH-only machine):
+  sudo loginctl enable-linger <your user>
+
 For more information, visit: https://nomercy.tv

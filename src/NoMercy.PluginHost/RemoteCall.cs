@@ -28,6 +28,8 @@ public sealed class RemoteCall(Ulid pluginId, IPluginBrokerService broker)
 {
     private static readonly JsonSerializerOptions Json = PluginWireJson.Options;
 
+    public Ulid PluginId => pluginId;
+
     public async Task<T?> AskAsync<T>(string facade, string member, object? arguments = null)
     {
         string payload = await SendAsync(facade, member, arguments);

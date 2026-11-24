@@ -13,7 +13,8 @@ namespace NoMercy.PluginSdk.Abstractions;
 
 /// <summary>
 /// Running the server's own ffmpeg build - the one built with beat, key and
-/// stem detection, never with rubberband - over a track or a derived file.
+/// stem detection, never with rubberband - over a track or a file of the
+/// plugin's own.
 /// <para>
 /// Without this, a plugin doing DJ-grade analysis has two bad options: ship
 /// its own ffmpeg, which drifts from the server's build and cannot use its
@@ -79,8 +80,7 @@ public interface IPluginAudioTools
     /// that was already there stays as it was. The files count against the
     /// plugin's disk quota, and a run that would go past it is ended and
     /// refused. One run per plugin at a time, shared with
-    /// <see cref="RunFilterGraphAsync(PluginAudioInput, PluginFilterGraph, Action{string}?, Action{string}?, CancellationToken)" />
-    /// and <see cref="SplitStemsAsync" />.
+    /// <see cref="RunFilterGraphAsync(PluginAudioInput, PluginFilterGraph, Action{string}?, Action{string}?, CancellationToken)" />.
     /// </para>
     /// <para>
     /// stdout carries ffmpeg's progress report next to whatever the graph
@@ -102,16 +102,4 @@ public interface IPluginAudioTools
         PluginAudioRunOptions options,
         CancellationToken ct = default
     ) => Task.FromResult(PluginAudioRunResult.Refused("this host cannot render audio to a file"));
-
-    /// <summary>
-    /// Coverage Full splits the whole track; MixIn or MixOut split that
-    /// window (first 20 % / last 25 %, computed by the host from the track
-    /// duration). Stems land in the derived store and in the stem register.
-    /// </summary>
-    Task<PluginStemSplitResult> SplitStemsAsync(
-        string trackId,
-        PluginStemCoverage coverage,
-        PluginStemSet stemSet,
-        CancellationToken ct = default
-    );
 }

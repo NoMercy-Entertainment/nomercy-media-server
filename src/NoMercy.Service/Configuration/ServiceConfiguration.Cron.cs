@@ -27,8 +27,6 @@ public static partial class ServiceConfiguration
         services.AddCronJob<DeviceDropRuleCronJob>("device-drop-rule-job");
         services.AddCronJob<DatabaseBackupCronJob>("database-backup");
         services.AddCronJob<IpBanExpiryCronJob>("ip-ban-expiry");
-        services.AddCronJob<AudioAnalysisSweepCronJob>("audio-analysis-sweep");
-        services.AddCronJob<DerivedAudioEvictionCronJob>("derived-audio-eviction");
         services.AddCronJob<ChapterSegmentSweepCronJob>("chapter-segment-sweep");
     }
 }

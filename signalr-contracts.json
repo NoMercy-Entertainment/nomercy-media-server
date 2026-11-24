@@ -93,6 +93,7 @@
     "MusicHub": [
       "ChangeDeviceCommand(System.String) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "ChangeVolumeCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
+      "CrossfadeCompleteAtCommand(System.Nullable\u003CSystem.Guid\u003E, System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "CrossfadeCompleteCommand(System.Nullable\u003CSystem.Guid\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "CrossfadeStartCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "CurrentTimeCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
@@ -141,6 +142,12 @@
       "RemoveWatched(NoMercy.Api.Services.Video.VideoProgressRequest) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "SetTime(NoMercy.Api.Services.Video.VideoProgressRequest) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "StartPlaybackCommand(System.String, System.Object, System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E"
+    ]
+  },
+  "messages": {
+    "MusicHub": [
+      "PrepareCrossfade { crossfade_duration_ms: System.Int32, next_item: NoMercy.Api.DTOs.Music.PlaylistTrackDto, timestamp: System.Int64 }",
+      "PrepareTransition { next_item: NoMercy.Api.DTOs.Music.PlaylistTrackDto, timestamp: System.Int64, transition: { data: json, duration_ms: System.Int32, incoming_resume_ms: System.Int32, mime: System.String, outgoing_stop_ms: System.Int32, url: System.String } }"
     ]
   }
 }

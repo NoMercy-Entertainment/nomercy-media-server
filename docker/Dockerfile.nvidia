@@ -71,7 +71,10 @@ RUN mkdir -p /data/.local/share/NoMercy \
 COPY publish/NoMercyMediaServer .
 RUN chown -R nomercy:nomercy /app
 
-USER nomercy
+# Start as root only so the entrypoint can hand an old root-owned volume to
+# nomercy; it then drops to nomercy before the server starts.
+COPY docker/entrypoint.sh /usr/local/bin/nomercy-entrypoint.sh
+RUN chmod +x /usr/local/bin/nomercy-entrypoint.sh
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_RUNNING_IN_CONTAINER=true
@@ -84,5 +87,5 @@ EXPOSE 7626
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -fsk https://127.0.0.1:7626/health || curl -fs http://127.0.0.1:7626/health || exit 1
 
-ENTRYPOINT ["./NoMercyMediaServer"]
+ENTRYPOINT ["/usr/local/bin/nomercy-entrypoint.sh", "./NoMercyMediaServer"]
 CMD ["--internal-port", "7626"]

@@ -12,6 +12,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Cast;
 using NoMercy.Networking.Discovery;
 
 namespace NoMercy.Networking.Devices;
@@ -63,7 +64,9 @@ public static class DeviceListComposer
                     Name = d.CustomName ?? d.Name,
                     Type = d.Type,
                     Online = isOnline(d.Id),
-                    LanIp = d.LanIp,
+                    LanIp = string.IsNullOrWhiteSpace(d.LanIp)
+                        ? CastAddress.Resolve(null, d.Ip)
+                        : d.LanIp,
                     LastSeenAt = d.WsConnectedAt > d.MdnsSeenAt ? d.WsConnectedAt : d.MdnsSeenAt,
                     Foreground = s.Foreground,
                     ScreenOn = s.ScreenOn,

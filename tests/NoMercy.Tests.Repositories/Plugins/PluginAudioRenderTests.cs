@@ -21,7 +21,6 @@ using NoMercy.Database.Models.Music;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
-using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
@@ -246,9 +245,6 @@ public class PluginAudioRenderTests : IDisposable
             _runner.Object,
             _storage.Object,
             _driver,
-            Mock.Of<IStorage>(),
-            Mock.Of<IDerivedAudioStore>(),
-            Mock.Of<IPluginMusicAnalysisWriterFactory>(),
             contextFactory.Object,
             _probe.Object,
             stemsplitSources ?? new SpleeterOnlySources(),
@@ -1619,9 +1615,7 @@ public class PluginAudioRenderTests : IDisposable
 
         file.PluginFilePath.Should().Be("downloads/clip.wav");
         file.TrackId.Should().BeNull();
-        file.StorageKey.Should().BeNull();
         PluginAudioInput.Track("t").PluginFilePath.Should().BeNull();
-        PluginAudioInput.Derived("k").PluginFilePath.Should().BeNull();
     }
 
     [Fact]
@@ -1679,13 +1673,6 @@ public class PluginAudioRenderTests : IDisposable
             Action<string>? onStdErr,
             CancellationToken ct = default
         ) => Task.FromResult(new PluginAudioRunResult(0, null));
-
-        public Task<PluginStemSplitResult> SplitStemsAsync(
-            string trackId,
-            PluginStemCoverage coverage,
-            PluginStemSet stemSet,
-            CancellationToken ct = default
-        ) => Task.FromResult(PluginStemSplitResult.Refused("not here"));
     }
 
     [Fact]

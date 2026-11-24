@@ -19,7 +19,6 @@ using NoMercy.Database.Models.Music;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
-using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
@@ -39,15 +38,13 @@ public class PluginAudioToolsTests : IDisposable
 {
     private const string FfmpegBinary = "ffmpeg";
 
-    // A key the derived store could have minted: 64 lowercase hex characters.
-    // Anything shorter is refused before the store is consulted.
-    private const string DerivedKey =
-        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     private const string VersionLine =
         "ffmpeg version 9.0-NoMercy-MediaServer Copyright (c) 2000-2026 the FFmpeg developers";
 
     private readonly SqliteConnection _connection;
+
     private readonly DbContextOptions<MediaContext> _options;
+
     private readonly Ulid _pluginId = Ulid.NewUlid();
 
     // Five minutes, so 20 % is 60 s and 75 % is 225 s - both whole seconds, so
@@ -61,43 +58,29 @@ public class PluginAudioToolsTests : IDisposable
     private readonly Guid _trackWithoutDurationId = Guid.NewGuid();
 
     private readonly Mock<IProcessRunner> _runner = new();
+
     private readonly Mock<IStorage> _storage = new();
+
     private readonly Mock<IStorageDriver> _driver = new();
-    private readonly Mock<IStorage> _derivedStorage = new();
-    private readonly Mock<IDerivedAudioStore> _store = new();
+
     private readonly Mock<IFfmpegCapabilityProbe> _probe = new();
-    private readonly Mock<IPluginMusicAnalysisWriter> _writer = new();
-    private readonly Mock<IPluginMusicAnalysisWriterFactory> _writerFactory = new();
 
     private readonly EncoderOptions _encoderOptions = new() { FfmpegPathOverride = FfmpegBinary };
 
-    private readonly List<PluginTrackStem> _registeredStems = [];
-    private readonly List<string> _deletedDerivedPaths = [];
-
-    // In lease order: the scratch file ffmpeg writes the vocals to, then the
-    // one it writes the accompaniment to. The names carry a random Ulid, so
-    // the argument-array assertions read them from here.
-    private readonly List<string> _leasedDerivedPaths = [];
     private readonly List<string> _stdErrLines = [VersionLine];
 
     private string[] _capturedArguments = [];
 
     // Every run's arguments, in order, and the runs a test scripted one by one.
     private readonly List<string[]> _argumentsPerRun = [];
+
     private readonly Queue<ScriptedRun> _scriptedRuns = new();
+
     private string? _capturedWorkingDirectory;
+
     private string? _capturedExecutable;
+
     private int _runCount;
-    private int _putCount;
-
-    // In PutAsync order: the keys the mocked store minted and the content types
-    // it was asked to store them under.
-    private readonly List<string> _putKeys = [];
-    private readonly List<string> _putContentTypes = [];
-
-    // What the host did, in the order it did it: "touch" for a derived input's
-    // keep-alive, "run" for the ffmpeg process itself.
-    private readonly List<string> _callOrder = [];
 
     // Swapped out by the concurrency test for a task that only completes once
     // the second call has already been refused.
@@ -110,12 +93,9 @@ public class PluginAudioToolsTests : IDisposable
         _connection = new("Data Source=:memory:");
         _connection.Open();
 
-        // The stem rows these tests register point at derived-store keys that
-        // have no DerivedAudio parent row here - the store is a mock, so
-        // nothing ever inserted one. The cascade itself is proven against a
-        // real store in DerivedAudioStoreTests and against the schema in
-        // AnalysisRecordModelTests; what is under test here is the command
-        // ffmpeg is handed and the refusals around it.
+        // Tracks are seeded without the rows they would point at; what is
+        // under test here is the command ffmpeg is handed and the refusals
+        // around it.
         using (SqliteCommand foreignKeysOff = _connection.CreateCommand())
         {
             foreignKeysOff.CommandText = "PRAGMA foreign_keys = OFF;";
@@ -184,107 +164,7 @@ public class PluginAudioToolsTests : IDisposable
                     + string.Join("/", segments.Select(segment => segment.Trim('/')))
             );
 
-        _derivedStorage
-            .Setup(storage =>
-                storage.AcquireLocalPathAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
-            )
-            .ReturnsAsync(
-                (string path, CancellationToken _) =>
-                {
-                    _leasedDerivedPaths.Add(path);
-                    return new LocalPathLease(path);
-                }
-            );
-        _derivedStorage
-            .Setup(storage =>
-                storage.CreateDirectoryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
-            )
-            .Returns(Task.CompletedTask);
-        _derivedStorage
-            .Setup(storage =>
-                storage.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
-            )
-            .ReturnsAsync(() => new MemoryStream([1, 2, 3]));
-        _derivedStorage
-            .Setup(storage =>
-                storage.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
-            )
-            .ReturnsAsync(true);
-        _derivedStorage
-            .Setup(storage =>
-                storage.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
-            )
-            .Returns(
-                (string path, CancellationToken _) =>
-                {
-                    _deletedDerivedPaths.Add(path);
-                    return Task.CompletedTask;
-                }
-            );
-
-        _store
-            .Setup(store => store.RelativePath(It.IsAny<string>()))
-            .Returns((string key) => $"{key[..2]}/{key}");
-        _store
-            .Setup(store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-        _store
-            .Setup(store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns(
-                (string _, CancellationToken _) =>
-                {
-                    _callOrder.Add("touch");
-                    return Task.FromResult(true);
-                }
-            );
-        _store
-            .Setup(store =>
-                store.PutAsync(
-                    It.IsAny<Stream>(),
-                    It.IsAny<string>(),
-                    It.IsAny<CancellationToken>()
-                )
-            )
-            .ReturnsAsync(
-                (Stream _, string contentType, CancellationToken _) =>
-                {
-                    string key = $"ab{++_putCount:D62}";
-                    _putKeys.Add(key);
-                    _putContentTypes.Add(contentType);
-                    return new DerivedAudioEntry(key, contentType, 4096 + _putCount);
-                }
-            );
-
         _probe.Setup(probe => probe.GetCachedReport()).Returns(Report(stemsplitModelPresent: true));
-
-        _writer
-            .Setup(writer =>
-                writer.RegisterStemAsync(It.IsAny<PluginTrackStem>(), It.IsAny<CancellationToken>())
-            )
-            .ReturnsAsync(
-                (PluginTrackStem stem, CancellationToken _) =>
-                {
-                    _registeredStems.Add(stem);
-                    return PluginWriteResult.Accepted();
-                }
-            );
-        _writer
-            .Setup(writer =>
-                writer.RegisterStemsAsync(
-                    It.IsAny<IReadOnlyList<PluginTrackStem>>(),
-                    It.IsAny<CancellationToken>()
-                )
-            )
-            .ReturnsAsync(
-                (IReadOnlyList<PluginTrackStem> stems, CancellationToken _) =>
-                {
-                    _registeredStems.AddRange(stems);
-                    return PluginWriteResult.Accepted();
-                }
-            );
-        _writerFactory
-            .Setup(factory => factory.CreateFor(It.IsAny<Ulid>()))
-            .Returns(_writer.Object);
 
         // The 8-arg overload with a kill signal is what RunFfmpegAsync always
         // calls now - see PluginAudioTools.RunFfmpegAsync for why (the
@@ -317,7 +197,6 @@ public class PluginAudioToolsTests : IDisposable
                 ) =>
                 {
                     _runCount++;
-                    _callOrder.Add("run");
                     _capturedExecutable = executable;
                     _capturedArguments = arguments;
                     _capturedWorkingDirectory = workingDirectory;
@@ -390,9 +269,6 @@ public class PluginAudioToolsTests : IDisposable
             _runner.Object,
             _storage.Object,
             _driver.Object,
-            _derivedStorage.Object,
-            _store.Object,
-            _writerFactory.Object,
             contextFactory.Object,
             _probe.Object,
             stemsplitSources ?? new SpleeterOnlySources(),
@@ -442,63 +318,6 @@ public class PluginAudioToolsTests : IDisposable
         return index >= 0 && index + 1 < _capturedArguments.Length
             ? _capturedArguments[index + 1]
             : null;
-    }
-
-    /// <summary>
-    /// The whole stemsplit command, with the two scratch paths the run
-    /// actually leased filled in - their names carry a random Ulid, so they
-    /// cannot be written out literally.
-    /// <para>
-    /// Asserted in full, and deliberately: a window argument in the wrong
-    /// place still satisfies "the array contains -t", which is how a window
-    /// that reached only the first output went unnoticed.
-    /// </para>
-    /// </summary>
-    private string[] ExpectedSplitArguments(params string[] windowArguments)
-    {
-        _leasedDerivedPaths.Should().HaveCount(2);
-
-        string vocalsPath = _leasedDerivedPaths[0];
-        string accompanimentPath = _leasedDerivedPaths[1];
-
-        vocalsPath.Should().MatchRegex(@"^tmp/[0-9A-Z]{26}-vocals\.opus$");
-        accompanimentPath.Should().Be(vocalsPath.Replace("-vocals.opus", "-accompaniment.opus"));
-
-        return
-        [
-            "-nostdin",
-            "-nostats",
-            "-progress",
-            "pipe:1",
-            "-stats_period",
-            "5",
-            .. windowArguments,
-            "-i",
-            "/library/folder/track.flac",
-            "-vn",
-            "-sn",
-            "-dn",
-            "-filter_complex",
-            $"[0:a]stemsplit=model={ModelFile}[voc][acc]",
-            "-map",
-            "[voc]",
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "160k",
-            "-ar",
-            "48000",
-            vocalsPath,
-            "-map",
-            "[acc]",
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "160k",
-            "-ar",
-            "48000",
-            accompanimentPath,
-        ];
     }
 
     // --- RunFilterGraphAsync: the command --------------------------------
@@ -577,46 +396,6 @@ public class PluginAudioToolsTests : IDisposable
 
         ArgumentAfter("-filter_complex").Should().Be($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
         _capturedWorkingDirectory.Should().Be(AppFiles.FfmpegFolder);
-    }
-
-    [Fact]
-    public async Task RunFilterGraph_Derived_ResolvesTheKeyThroughTheStore()
-    {
-        const string key = DerivedKey;
-
-        await CreateTools()
-            .RunFilterGraphAsync(
-                PluginAudioInput.Derived(key),
-                new PluginFilterGraph("volume=1", Complex: false),
-                null,
-                null
-            );
-
-        ArgumentAfter("-i").Should().Be($"ab/{key}");
-    }
-
-    /// <summary>
-    /// A graph reading a derived file can run for ten minutes; the eviction
-    /// sweep runs hourly and only spares what was used inside its grace
-    /// window. The key is touched before ffmpeg is started, so the file cannot
-    /// be evicted out from under the run that is reading it.
-    /// </summary>
-    [Fact]
-    public async Task RunFilterGraph_OnADerivedInput_TouchesTheKeyFirst()
-    {
-        await CreateTools()
-            .RunFilterGraphAsync(
-                PluginAudioInput.Derived(DerivedKey),
-                new PluginFilterGraph("volume=1", Complex: false),
-                null,
-                null
-            );
-
-        _callOrder.Should().Equal("touch", "run");
-        _store.Verify(
-            store => store.TouchAsync(DerivedKey, It.IsAny<CancellationToken>()),
-            Times.Once
-        );
     }
 
     // --- RunFilterGraphAsync: the refusals -------------------------------
@@ -795,88 +574,6 @@ public class PluginAudioToolsTests : IDisposable
     }
 
     [Fact]
-    public async Task RunFilterGraph_RefusesAKeyThatIsNotInTheDerivedStore()
-    {
-        const string key = DerivedKey;
-        _store
-            .Setup(store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        PluginAudioRunResult result = await CreateTools()
-            .RunFilterGraphAsync(
-                PluginAudioInput.Derived(key),
-                new PluginFilterGraph("volume=1", Complex: false),
-                null,
-                null
-            );
-
-        result.Refusal.Should().Be($"storage key {key} is not in the derived store");
-    }
-
-    /// <summary>
-    /// The touch is the whole check: it bumps the key under the store's own
-    /// per-key lock and answers whether both halves of the entry were still
-    /// there to bump. An eviction that took the key just before this call gets
-    /// the same refusal as a key nothing ever stored - and ffmpeg is never
-    /// started against a path that is no longer a file.
-    /// </summary>
-    [Fact]
-    public async Task RunFilterGraph_RefusesADerivedInputThatEvictionRemoved()
-    {
-        _store
-            .Setup(store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        PluginAudioRunResult result = await CreateTools()
-            .RunFilterGraphAsync(
-                PluginAudioInput.Derived(DerivedKey),
-                new PluginFilterGraph("volume=1", Complex: false),
-                null,
-                null
-            );
-
-        result.Refusal.Should().Be($"storage key {DerivedKey} is not in the derived store");
-        _runCount.Should().Be(0);
-
-        // One round trip, not two: the touch replaced the separate existence
-        // question it used to be preceded by.
-        _store.Verify(
-            store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-    }
-
-    /// <summary>
-    /// A derived key a plugin made up is refused in the same words as one the
-    /// store does not hold, and the store is never asked - answering means
-    /// slicing the key into a path, which is exactly what a traversal attempt
-    /// is counting on.
-    /// </summary>
-    [Theory]
-    [InlineData("")]
-    [InlineData("a")]
-    [InlineData("../../etc")]
-    [InlineData("ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789")]
-    public async Task RunFilterGraph_RefusesAMalformedDerivedKey(string key)
-    {
-        PluginAudioRunResult result = await CreateTools()
-            .RunFilterGraphAsync(
-                PluginAudioInput.Derived(key),
-                new PluginFilterGraph("volume=1", Complex: false),
-                null,
-                null
-            );
-
-        result.Refusal.Should().Be($"storage key {key} is not in the derived store");
-        _runCount.Should().Be(0);
-        _store.Verify(
-            store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        _store.Verify(store => store.RelativePath(It.IsAny<string>()), Times.Never);
-    }
-
-    [Fact]
     public async Task RunFilterGraph_RefusesWhenFfmpegIsNotInstalled()
     {
         _encoderOptions.FfmpegPathOverride = null;
@@ -891,8 +588,6 @@ public class PluginAudioToolsTests : IDisposable
 
         result.Refusal.Should().Be("ffmpeg is not installed");
     }
-
-    // --- SplitStemsAsync --------------------------------------------------
 
     /// <summary>
     /// ffmpeg on a stalled mount never returns on its own, so the host puts its
@@ -968,177 +663,6 @@ public class PluginAudioToolsTests : IDisposable
         PluginAudioArguments.FfmpegVersion(VersionLine).Should().Be("9.0-NoMercy-MediaServer");
     }
 
-    [Fact]
-    public async Task SplitStems_Four_IsRefused()
-    {
-        PluginStemSplitResult result = await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Four);
-
-        result.Refusal.Should().Be("four-stem splitting is not available yet");
-        _runCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SplitStems_MixIn_UsesTheFirstTwentyPercent()
-    {
-        await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixIn, PluginStemSet.Two);
-
-        _capturedArguments.Should().Equal(ExpectedSplitArguments("-t", "60"));
-    }
-
-    [Fact]
-    public async Task SplitStems_MixOut_StartsAtSeventyFivePercent()
-    {
-        await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixOut, PluginStemSet.Two);
-
-        _capturedArguments.Should().Equal(ExpectedSplitArguments("-ss", "225"));
-    }
-
-    [Fact]
-    public async Task SplitStems_Full_HasNoWindowArguments()
-    {
-        await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        _capturedArguments.Should().Equal(ExpectedSplitArguments());
-        _capturedExecutable.Should().Be(FfmpegBinary);
-        _capturedWorkingDirectory.Should().Be(AppFiles.FfmpegFolder);
-    }
-
-    [Fact]
-    public async Task SplitStems_WindowIsAnInputOption_SoBothStemsGetIt()
-    {
-        await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixOut, PluginStemSet.Two);
-
-        // The regression this guards: placed after -i, a window binds to the
-        // next file named - the first output. The vocals stem would be the
-        // window and the accompaniment stem the whole track, while both were
-        // registered with the same window milliseconds. Ahead of -i it trims
-        // the decoded stream, so both output pads see the same audio.
-        int inputIndex = Array.IndexOf(_capturedArguments, "-i");
-        inputIndex.Should().BePositive();
-        Array.IndexOf(_capturedArguments, "-ss").Should().BeLessThan(inputIndex);
-        _capturedArguments.Skip(inputIndex).Should().NotContain("-ss").And.NotContain("-t");
-    }
-
-    [Fact]
-    public async Task SplitStems_RegistersBothStems_OnSuccess()
-    {
-        PluginStemSplitResult result = await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixIn, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        result.Stems.Should().HaveCount(2);
-        result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
-        result.Stems.Should().OnlyContain(stem => stem.Coverage == PluginStemCoverage.MixIn);
-        result.Stems.Select(stem => stem.StorageKey).Should().OnlyHaveUniqueItems();
-
-        // One write, both stems: a split whose second register row is refused
-        // must not leave the first one behind, so the pair goes in together.
-        _writer.Verify(
-            writer =>
-                writer.RegisterStemsAsync(
-                    It.Is<IReadOnlyList<PluginTrackStem>>(stems =>
-                        stems.Count == 2
-                        && stems[0].Kind == "vocals"
-                        && stems[1].Kind == "accompaniment"
-                    ),
-                    It.IsAny<CancellationToken>()
-                ),
-            Times.Once
-        );
-        _writer.Verify(
-            writer =>
-                writer.RegisterStemAsync(
-                    It.IsAny<PluginTrackStem>(),
-                    It.IsAny<CancellationToken>()
-                ),
-            Times.Never
-        );
-
-        _registeredStems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
-        _registeredStems
-            .Should()
-            .OnlyContain(stem =>
-                stem.TrackId == _trackId
-                && stem.Format == "opus"
-                && stem.SampleRate == 48000
-                && stem.WindowStartMs == 0
-                && stem.WindowEndMs == 60000
-            );
-        _registeredStems
-            .Should()
-            .OnlyContain(stem =>
-                stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
-            );
-
-        // The keys the mocked store minted, in the order it minted them: the
-        // vocals stem must carry the first and the accompaniment the second.
-        // Swapping them would still pass every assertion above while pointing
-        // each register row at the other stem's audio.
-        _registeredStems.Select(stem => stem.StorageKey).Should().Equal(_putKeys);
-        result.Stems.Select(stem => stem.StorageKey).Should().Equal(_putKeys);
-
-        // Opus in an Ogg container - the content type the derived store stores
-        // the stem under, and the one a client is later handed it with.
-        _putContentTypes.Should().Equal("audio/ogg", "audio/ogg");
-
-        // Both temp files handed to the store are gone again afterwards.
-        _deletedDerivedPaths.Should().HaveCount(2);
-        _deletedDerivedPaths.Should().OnlyContain(path => path.StartsWith("tmp/"));
-    }
-
-    [Fact]
-    public async Task SplitStems_RefusesWhenStemsplitExitsNonZero()
-    {
-        _runResult = Task.FromResult(
-            new ProcessResult(3, string.Empty, string.Empty, TimeSpan.Zero)
-        );
-
-        PluginStemSplitResult result = await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().Be("stemsplit exited with 3");
-        result.Stems.Should().BeEmpty();
-        _registeredStems.Should().BeEmpty();
-        _deletedDerivedPaths.Should().HaveCount(2);
-    }
-
-    /// <summary>
-    /// Exit code 0 is ffmpeg's word, not proof. A graph that separated nothing
-    /// still exits clean, and the scratch files it never wrote would surface
-    /// from inside the store as an I/O error rather than as something a plugin
-    /// can act on.
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_RefusesWhenFfmpegWroteNoOutput()
-    {
-        _derivedStorage
-            .Setup(storage =>
-                storage.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
-            )
-            .ReturnsAsync(false);
-
-        PluginStemSplitResult result = await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().Be("stemsplit produced no output");
-        result.Stems.Should().BeEmpty();
-        _registeredStems.Should().BeEmpty();
-        _store.Verify(
-            store =>
-                store.PutAsync(
-                    It.IsAny<Stream>(),
-                    It.IsAny<string>(),
-                    It.IsAny<CancellationToken>()
-                ),
-            Times.Never
-        );
-    }
-
     /// <summary>
     /// A plugin sweeping a library unattended must not lose the whole sweep to
     /// one unlucky track: a dependency that throws where nothing planned for it
@@ -1174,341 +698,6 @@ public class PluginAudioToolsTests : IDisposable
 
         PluginAudioRunResult graphResult = (await runGraph.Should().NotThrowAsync()).Which;
         graphResult.Refusal.Should().Be("the server could not complete this call: IOException");
-
-        Func<Task<PluginStemSplitResult>> split = () =>
-            tools.SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        PluginStemSplitResult splitResult = (await split.Should().NotThrowAsync()).Which;
-        splitResult.Refusal.Should().Be("the server could not complete this call: IOException");
-    }
-
-    [Fact]
-    public async Task SplitStems_RefusesWhenTheModelIsAbsent()
-    {
-        _probe
-            .Setup(probe => probe.GetCachedReport())
-            .Returns(Report(stemsplitModelPresent: false));
-
-        PluginStemSplitResult result = await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().Be("the stemsplit model is not installed");
-        _runCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SplitStems_RefusesATrackWithoutADuration()
-    {
-        PluginStemSplitResult result = await CreateTools()
-            .SplitStemsAsync(
-                _trackWithoutDurationId.ToString(),
-                PluginStemCoverage.MixIn,
-                PluginStemSet.Two
-            );
-
-        result.Refusal.Should().Be($"track {_trackWithoutDurationId} has no duration");
-        _runCount.Should().Be(0);
-    }
-
-    // --- SplitStemsAsync: the libgomp exit-hang workaround -----------------
-    //
-    // The Windows ffmpeg build links ggml against libgomp, whose worker-pool
-    // teardown can deadlock at process exit after every output is already
-    // written. stemsplit asks ffmpeg for progress on stdout so the host can
-    // tell "finished but stuck" apart from "still working": these tests
-    // stand in for the real ffmpeg process by scripting the runner directly
-    // rather than through SetUpMocks's default fake.
-
-    /// <summary>
-    /// The scripted runner here never completes on its own - only reacting to
-    /// the kill signal, the way a real process that is stuck at exit would
-    /// only react to being killed. It also throws the cancellation rather
-    /// than returning a result, proving the fallback path in
-    /// <c>RunFfmpegAsync</c> that builds success from what "progress=end"
-    /// already promised, for a runner that does not hand back a clean result
-    /// of its own the way the real <c>ProcessRunner</c> does.
-    /// <para>
-    /// The delay is linked to both the kill signal and the run's own
-    /// cancellation token, and <see cref="CreateTools" /> is given a short
-    /// <c>runTimeout</c> on top of the short grace period: if a future
-    /// regression stops the kill signal firing, the run token's own timeout
-    /// still ends the delay, so the test fails fast instead of hanging the
-    /// suite.
-    /// </para>
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_EndsARunThatFinishedButDidNotExit_AfterTheGracePeriod()
-    {
-        _runner
-            .Setup(runner =>
-                runner.RunAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<string[]>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<Action<int>?>()
-                )
-            )
-            .Returns(
-                async (
-                    string _,
-                    string[] _,
-                    Action<string>? onStdOut,
-                    Action<string>? onStdErr,
-                    string? _,
-                    CancellationToken cancellationToken,
-                    CancellationToken killSignal,
-                    Action<int>? _
-                ) =>
-                {
-                    _runCount++;
-                    onStdErr?.Invoke(VersionLine);
-                    onStdOut?.Invoke("progress=end");
-
-                    using CancellationTokenSource linked =
-                        CancellationTokenSource.CreateLinkedTokenSource(
-                            cancellationToken,
-                            killSignal
-                        );
-                    await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
-                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
-                }
-            );
-
-        PluginStemSplitResult result = await CreateTools(
-                runTimeout: TimeSpan.FromSeconds(5),
-                exitGracePeriod: TimeSpan.FromMilliseconds(20)
-            )
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        result.Stems.Should().HaveCount(2);
-        result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
-    }
-
-    /// <summary>
-    /// The real <see cref="ProcessRunner" /> does not throw when its kill
-    /// signal fires - it kills the process tree and returns a normal
-    /// <see cref="ProcessResult" /> with exit code 0
-    /// (<c>killedBySignal ? 0 : process.ExitCode</c>). This scripts exactly
-    /// that instead of the throwing fallback above, so the common case -
-    /// the real runner's own behaviour - is proven directly rather than only
-    /// through the fallback path.
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_EndsARunThatFinishedButDidNotExit_ViaTheRunnersOwnKillResult()
-    {
-        _runner
-            .Setup(runner =>
-                runner.RunAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<string[]>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<Action<int>?>()
-                )
-            )
-            .Returns(
-                async (
-                    string _,
-                    string[] _,
-                    Action<string>? onStdOut,
-                    Action<string>? onStdErr,
-                    string? _,
-                    CancellationToken cancellationToken,
-                    CancellationToken killSignal,
-                    Action<int>? _
-                ) =>
-                {
-                    _runCount++;
-                    onStdErr?.Invoke(VersionLine);
-                    onStdOut?.Invoke("progress=end");
-
-                    // Linked to both tokens, and CreateTools below is given a
-                    // short runTimeout on top of the short grace period: if a
-                    // future regression stops the kill signal firing, the run
-                    // token's own timeout still ends the delay, so the test
-                    // fails fast instead of hanging the suite.
-                    using CancellationTokenSource linked =
-                        CancellationTokenSource.CreateLinkedTokenSource(
-                            cancellationToken,
-                            killSignal
-                        );
-
-                    try
-                    {
-                        await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
-                    }
-                    catch (OperationCanceledException) when (killSignal.IsCancellationRequested)
-                    {
-                        // The kill signal fired - exactly what a real kill of
-                        // the process tree looks like from here: the runner
-                        // returns normally, exit code 0, instead of throwing.
-                        // A run-token cancellation (the runTimeout backstop
-                        // above) is a different event and must propagate
-                        // instead, the same as the throwing fallback test.
-                    }
-
-                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
-                }
-            );
-
-        PluginStemSplitResult result = await CreateTools(
-                runTimeout: TimeSpan.FromSeconds(5),
-                exitGracePeriod: TimeSpan.FromMilliseconds(20)
-            )
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        result.Stems.Should().HaveCount(2);
-        result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
-
-        _writer.Verify(
-            writer =>
-                writer.RegisterStemsAsync(
-                    It.Is<IReadOnlyList<PluginTrackStem>>(stems =>
-                        stems.Count == 2
-                        && stems[0].Kind == "vocals"
-                        && stems[1].Kind == "accompaniment"
-                    ),
-                    It.IsAny<CancellationToken>()
-                ),
-            Times.Once
-        );
-        _registeredStems
-            .Should()
-            .OnlyContain(stem =>
-                stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
-            );
-    }
-
-    /// <summary>
-    /// A run that exits on its own soon after "progress=end" is not touched:
-    /// the grace period was cancelled before it ever fired the kill signal.
-    /// A long grace period here proves that - the test does not actually wait
-    /// for it, since the run's own completion cancels the pending delay.
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_ProgressEndFollowedByANormalExit_IsUnaffected()
-    {
-        _runner
-            .Setup(runner =>
-                runner.RunAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<string[]>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<Action<int>?>()
-                )
-            )
-            .Returns(
-                (
-                    string _,
-                    string[] _,
-                    Action<string>? onStdOut,
-                    Action<string>? onStdErr,
-                    string? _,
-                    CancellationToken _,
-                    CancellationToken _,
-                    Action<int>? _
-                ) =>
-                {
-                    _runCount++;
-                    onStdErr?.Invoke(VersionLine);
-                    onStdOut?.Invoke("progress=end");
-                    return Task.FromResult(
-                        new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero)
-                    );
-                }
-            );
-
-        PluginStemSplitResult result = await CreateTools(exitGracePeriod: TimeSpan.FromSeconds(30))
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        result.Stems.Should().HaveCount(2);
-    }
-
-    /// <summary>
-    /// A run that never prints "progress=end" - stuck for a reason that has
-    /// nothing to do with the exit-teardown deadlock, or simply never
-    /// finishing - still hits the ten-minute (here: milliseconds) backstop
-    /// the same way it always did.
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_WithoutTheProgressMarker_StillHitsTheRunTimeout()
-    {
-        _runner
-            .Setup(runner =>
-                runner.RunAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<string[]>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<Action<string>?>(),
-                    It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<CancellationToken>(),
-                    It.IsAny<Action<int>?>()
-                )
-            )
-            .Returns(
-                async (
-                    string _,
-                    string[] _,
-                    Action<string>? _,
-                    Action<string>? _,
-                    string? _,
-                    CancellationToken ct,
-                    CancellationToken _,
-                    Action<int>? _
-                ) =>
-                {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
-                }
-            );
-
-        PluginStemSplitResult result = await CreateTools(runTimeout: TimeSpan.FromMilliseconds(50))
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().StartWith("stemsplit timed out after");
-    }
-
-    /// <summary>
-    /// Regression for the argument list itself: <c>-nostats</c>,
-    /// <c>-progress pipe:1</c> and <c>-stats_period 5</c> ahead of
-    /// <c>-i</c>, the way every other global option here is, so ffmpeg
-    /// writes progress to stdout - five seconds apart, not its faster
-    /// default - for the whole run rather than for one file it never opens.
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_ArgumentsRequestProgressOnStdout_AheadOfTheInput()
-    {
-        await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        int inputIndex = Array.IndexOf(_capturedArguments, "-i");
-        inputIndex.Should().BePositive();
-
-        _capturedArguments.Should().Contain("-nostats");
-        Array.IndexOf(_capturedArguments, "-nostats").Should().BeLessThan(inputIndex);
-
-        int progressIndex = Array.IndexOf(_capturedArguments, "-progress");
-        progressIndex.Should().BeLessThan(inputIndex);
-        _capturedArguments[progressIndex + 1].Should().Be("pipe:1");
-
-        int statsPeriodIndex = Array.IndexOf(_capturedArguments, "-stats_period");
-        statsPeriodIndex.Should().BeLessThan(inputIndex);
-        _capturedArguments[statsPeriodIndex + 1].Should().Be("5");
     }
 
     // --- {alignModel}: the lyricsalign filter, its model, its phoneme tables ---
@@ -1675,101 +864,6 @@ public class PluginAudioToolsTests : IDisposable
                 (RoformerPreset preset, CancellationToken _) => StemsplitSource.Roformer(preset)
             );
         return _sources.Object;
-    }
-
-    [Fact]
-    public async Task SplitStems_OnAMachineThatRunsRoformer_RunsPresetFull_AndSaysSoInTheProducerVersion()
-    {
-        PluginStemSplitResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        ArgumentAfter("-filter_complex")
-            .Should()
-            .Be("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
-        _registeredStems
-            .Should()
-            .OnlyContain(stem =>
-                stem.ProducerVersion == "roformer-full@9.0-NoMercy-MediaServer"
-                && stem.Engine == "roformer"
-            );
-        _runCount.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task SplitStems_ARefusedRoformerRun_RunsAgainWithSpleeter_InTheSameCall_AndIsRemembered()
-    {
-        _scriptedRuns.Enqueue(
-            new(
-                RefusedExit,
-                [
-                    StemsplitLogFixtures.Banner,
-                    StemsplitLogFixtures.ModelLoaded,
-                    StemsplitLogFixtures.MemoryRefusal,
-                ]
-            )
-        );
-        _scriptedRuns.Enqueue(new(0, [VersionLine, StemsplitLogFixtures.SpleeterLoaded]));
-
-        PluginStemSplitResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        result.Stems.Should().HaveCount(2);
-        _argumentsPerRun.Should().HaveCount(2);
-        _argumentsPerRun[0].Should().Contain("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
-        _argumentsPerRun[1].Should().Contain($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
-        _registeredStems
-            .Should()
-            .OnlyContain(stem =>
-                stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
-                && stem.Engine == "spleeter"
-            );
-        _sources.Verify(
-            sources =>
-                sources.RememberRefusalAsync(
-                    It.Is<IReadOnlyCollection<RoformerPreset>>(presets =>
-                        presets.SequenceEqual(new[] { RoformerPreset.Full })
-                    ),
-                    StemsplitLogFixtures.MemoryRefusal,
-                    It.IsAny<CancellationToken>()
-                ),
-            Times.Once
-        );
-
-        // The refused run's empty files are removed before Spleeter writes,
-        // and the stored ones after: both scratch paths, twice.
-        _deletedDerivedPaths.Should().HaveCount(4);
-    }
-
-    [Fact]
-    public async Task SplitStems_ARoformerRunThatFailsForAnotherReason_IsNotRunAgain()
-    {
-        _scriptedRuns.Enqueue(new(1, [StemsplitLogFixtures.Banner, "Conversion failed!"]));
-
-        PluginStemSplitResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().Be("stemsplit exited with 1");
-        _runCount.Should().Be(1);
-        _sources.Verify(
-            sources =>
-                sources.RememberRefusalAsync(
-                    It.IsAny<IReadOnlyCollection<RoformerPreset>>(),
-                    It.IsAny<string>(),
-                    It.IsAny<CancellationToken>()
-                ),
-            Times.Never
-        );
-    }
-
-    [Fact]
-    public async Task SplitStems_WithoutASelector_IsSpleeter_AsBefore()
-    {
-        await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        ArgumentAfter("-filter_complex").Should().Be($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
     }
 
     [Fact]
@@ -2106,53 +1200,6 @@ public class PluginAudioToolsTests : IDisposable
         result.ExitCode.Should().Be(0);
     }
 
-    [Fact]
-    public async Task SplitStems_ARoformerRunWithoutAChunkLine_IsRefusedInWordsThatSaySo()
-    {
-        FfmpegPrinting([StemsplitLogFixtures.Banner], TimeSpan.FromMilliseconds(5), true);
-
-        PluginStemSplitResult result = await CreateTools(
-                stemsplitSources: RoformerWhereAsked(),
-                roformerNoChunkLimit: TimeSpan.FromMilliseconds(150)
-            )
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result
-            .Refusal.Should()
-            .StartWith("stemsplit made no progress: RoFormer handed out no chunk for ")
-            .And.EndWith(" seconds, and the run was ended");
-        _registeredStems.Should().BeEmpty();
-    }
-
-    /// <summary>
-    /// A GTX 1060 takes about 25 minutes over a four-minute song, far past the
-    /// ten minutes a stems job used to get. While chunks come, it runs on.
-    /// </summary>
-    [Fact]
-    public async Task SplitStems_ARoformerRunThatKeepsHandingOutChunks_OutlivesTheFixedLimit()
-    {
-        FfmpegPrinting(
-            [
-                StemsplitLogFixtures.FirstChunk,
-                StemsplitLogFixtures.ChunkAfterStats,
-                StemsplitLogFixtures.LastChunkOfFirstModel,
-                StemsplitLogFixtures.LastChunk,
-            ],
-            TimeSpan.FromMilliseconds(80),
-            hangAfter: false
-        );
-
-        PluginStemSplitResult result = await CreateTools(
-                runTimeout: TimeSpan.FromMilliseconds(100),
-                stemsplitSources: RoformerWhereAsked(),
-                roformerNoChunkLimit: TimeSpan.FromSeconds(2)
-            )
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-
-        result.Refusal.Should().BeNull();
-        result.Stems.Should().HaveCount(2);
-    }
-
     // --- RoFormer: one run on the GPU at a time (#637) ----------------------
 
     /// <summary>
@@ -2215,12 +1262,17 @@ public class PluginAudioToolsTests : IDisposable
         );
         RoformerGpuSlot slot = new();
 
-        Task<PluginStemSplitResult> stemsJob = CreateTools(
+        Task<PluginAudioRunResult> onePlugin = CreateTools(
                 stemsplitSources: RoformerWhereAsked(),
                 roformerGpuSlot: slot
             )
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-        await WaitForAsync(() => started == 1, "the stems job's split to start");
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}:stem=all[v][b]", true),
+                null,
+                null
+            );
+        await WaitForAsync(() => started == 1, "the first plugin's split to start");
 
         Task<PluginAudioRunResult> otherPlugin = CreateTools(
                 stemsplitSources: RoformerWhereAsked(),
@@ -2237,7 +1289,7 @@ public class PluginAudioToolsTests : IDisposable
         started.Should().Be(1, "the second RoFormer run waits for the GPU");
 
         firstRun.SetResult();
-        (await stemsJob).Refusal.Should().BeNull();
+        (await onePlugin).ExitCode.Should().Be(0);
         (await otherPlugin).ExitCode.Should().Be(0);
         started.Should().Be(2);
         mostAtOnce.Should().Be(1);
@@ -2251,12 +1303,17 @@ public class PluginAudioToolsTests : IDisposable
         FfmpegHoldingItsFirstRun(firstRun.Task, number => started = number, _ => { });
         RoformerGpuSlot slot = new();
 
-        Task<PluginStemSplitResult> stemsJob = CreateTools(
+        Task<PluginAudioRunResult> roformer = CreateTools(
                 stemsplitSources: RoformerWhereAsked(),
                 roformerGpuSlot: slot
             )
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
-        await WaitForAsync(() => started == 1, "the stems job's split to start");
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}:stem=all[v][b]", true),
+                null,
+                null
+            );
+        await WaitForAsync(() => started == 1, "the RoFormer split to start");
 
         PluginAudioRunResult spleeter = await CreateTools(roformerGpuSlot: slot)
             .RunFilterGraphAsync(
@@ -2270,6 +1327,6 @@ public class PluginAudioToolsTests : IDisposable
         started.Should().Be(2);
 
         firstRun.SetResult();
-        await stemsJob;
+        await roformer;
     }
 }

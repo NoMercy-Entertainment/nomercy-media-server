@@ -72,6 +72,7 @@ public sealed class EndpointAuthorizationCoverageTests(
         "POST /manage/app/start",
         "POST /manage/app/stop",
         "POST /manage/autostart",
+        "POST /manage/loglevel",
         "POST /manage/restart",
         "POST /manage/stop",
         "POST /manage/update",

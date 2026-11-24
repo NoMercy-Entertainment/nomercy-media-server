@@ -58,10 +58,38 @@ public partial class MusicHub
             );
             if (existingStillConnected)
                 return existing;
+
+            // A sleeping owned TV has no live client but is still the chosen target.
+            bool existingIsClaimedTarget = _musicPlayerStateManager.TryGetValue(
+                user.Id,
+                out MusicPlayerState? state
+            )
+                ? !string.IsNullOrEmpty(state.DeviceId)
+                    && state.DeviceId.Equals(existing.DeviceId, StringComparison.OrdinalIgnoreCase)
+                : true;
+            if (existingIsClaimedTarget)
+                return existing;
         }
 
         _activeDeviceRegistry.Set(user.Id, caller);
         return caller;
+    }
+
+    /// <summary>
+    /// Sets the state's DeviceId and the active-device registry together.
+    /// </summary>
+    private void SetActiveDevice(User user, MusicPlayerState state, Device device)
+    {
+        if (!string.Equals(state.DeviceId, device.DeviceId, StringComparison.Ordinal))
+            _logger.LogInformation(
+                "Active music device changed user={User} from={From} to={To}",
+                UserLogText.Of(user),
+                state.DeviceId,
+                device.DeviceId
+            );
+
+        state.DeviceId = device.DeviceId;
+        _activeDeviceRegistry.Set(user.Id, device);
     }
 
     /// <summary>
@@ -131,7 +159,11 @@ public partial class MusicHub
 
         if (callerIsActiveOrNoActive)
         {
-            state.DeviceId = device.DeviceId;
+            User? user = UserCacheService.GetUser(Context.User.UserId());
+            if (user is not null)
+                SetActiveDevice(user, state, device);
+            else
+                state.DeviceId = device.DeviceId;
             state.VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent;
         }
 
@@ -293,18 +325,25 @@ public partial class MusicHub
             );
         }
 
+        Device? targetDevice = connectedDevices.FirstOrDefault(d =>
+            d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+        );
+
+        // A sleeping TV has no live client; its device row still names the new active.
+        Device? claimTarget = OwnedClients(user.Id, deviceId).FirstOrDefault() ?? targetDevice;
+
         if (_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
         {
-            playerState.DeviceId = deviceId;
+            if (claimTarget is not null)
+                SetActiveDevice(user, playerState, claimTarget);
+            else
+                playerState.DeviceId = deviceId;
 
             // Volume is owned by the device: the device being transferred TO plays
             // at its own remembered level, never at whatever the outgoing active
             // device happened to be at. ResolveTransferVolume prefers a level
             // already known in DeviceVolumes, then the device's own persisted
             // VolumePercent, then the shared safe default.
-            Device? targetDevice = connectedDevices.FirstOrDefault(d =>
-                d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-            );
             playerState.VolumePercentage = MusicVolumeResolver.ResolveTransferVolume(
                 playerState,
                 deviceId,
@@ -345,20 +384,10 @@ public partial class MusicHub
             // instead of the caller who just explicitly asked for this device.
             // Reported live, 2026-09-10: tapping play on the phone started the
             // track on the living-room TV over the video it was casting.
-            Device? earlyTargetClient = OwnedClients(user.Id, deviceId).FirstOrDefault();
-            if (earlyTargetClient is not null)
-                _activeDeviceRegistry.Set(user.Id, earlyTargetClient);
+            if (claimTarget is not null)
+                _activeDeviceRegistry.Set(user.Id, claimTarget);
             return;
         }
-
-        // Keep the active-device registry in sync with playerState.DeviceId.
-        // Without this, the registry could still point at whoever last promoted
-        // themselves (e.g. the web client that initiated this ChangeDevice), while
-        // playerState says TV — and downstream calls that consult the registry
-        // would see a stale active.
-        Device? targetClient = OwnedClients(user.Id, deviceId).FirstOrDefault();
-        if (targetClient is not null)
-            _activeDeviceRegistry.Set(user.Id, targetClient);
 
         // Relay-first: the new active device starts playing off this the moment
         // it arrives, so it goes out before the two broadcasts below — those are

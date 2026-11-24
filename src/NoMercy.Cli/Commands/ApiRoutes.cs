@@ -22,6 +22,7 @@ internal static class ApiRoutes
     internal const string Update = ManageBase + "/update";
     internal const string Stop = ManageBase + "/stop";
     internal const string Restart = ManageBase + "/restart";
+    internal const string LogLevel = ManageBase + "/loglevel";
     internal const string Config = ManageBase + "/config";
     internal const string Plugins = ManageBase + "/plugins";
     internal const string Status = ManageBase + "/status";

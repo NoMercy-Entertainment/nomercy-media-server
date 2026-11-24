@@ -152,11 +152,27 @@ public class LibraryBrokerTests
         response.Refusal!.What.Should().Contain("DeleteEverything");
     }
 
+    [Fact]
+    public async Task AnOutOfProcessHubRegistration_IsRefusedAndRegistersNothing()
+    {
+        PluginCallResponse response = await Ask(
+            new FakeCapabilities(null),
+            new RecordingLibrary(),
+            "Handle",
+            """{"method":"wipe","access":"owner"}""",
+            "hub"
+        );
+
+        response.Ok.Should().BeFalse();
+        response.Refusal!.What.Should().Contain("hub.Handle");
+    }
+
     private static Task<PluginCallResponse> Ask(
         IPluginCapabilityBroker capabilities,
         IPluginLibraryQuery library,
         string member,
-        string payloadJson = "{}"
+        string payloadJson = "{}",
+        string facade = "library"
     ) =>
         new PluginBrokerService(
             PluginId,
@@ -172,9 +188,7 @@ public class LibraryBrokerTests
             new RecordingServices(),
             new RecordingSettings(),
             new RecordingUserData()
-        ).CallAsync(
-            new PluginCallRequest(PluginId.ToString(), "library", member, payloadJson, null)
-        );
+        ).CallAsync(new PluginCallRequest(PluginId.ToString(), facade, member, payloadJson, null));
 
     private static IPluginCapabilityBroker Refusing() =>
         new FakeCapabilities(

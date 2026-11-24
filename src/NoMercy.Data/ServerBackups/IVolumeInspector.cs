@@ -23,4 +23,10 @@ public interface IVolumeInspector
 
     /// <summary>True when <paramref name="path"/> is itself the root of a mounted volume.</summary>
     bool IsMountPoint(string path);
+
+    /// <summary>
+    /// The bytes still free for this server on the volume holding
+    /// <paramref name="path"/>; null when that cannot be told.
+    /// </summary>
+    long? FreeBytesAt(string path) => null;
 }

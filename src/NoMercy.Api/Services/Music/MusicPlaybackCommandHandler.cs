@@ -110,6 +110,7 @@ public class MusicPlaybackCommandHandler(MusicPlaybackService musicPlaybackServi
 
         state.SetPosition(seekSeconds * 1000);
         state.CrossfadeSignalSent = false; // User seeked, invalidate any pending crossfade
+        MusicJoinRules.AfterSeek(state, MusicPlaybackService.CrossfadeLeewayMs);
     }
 
     private void HandleNext(User user, MusicPlayerState state)

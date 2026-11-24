@@ -12,6 +12,7 @@
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Player;
@@ -115,22 +116,10 @@ public class PluginContext : IPluginContext
     public IPluginJobs? Jobs { get; }
 
     /// <summary>
-    /// Running ffmpeg over a track or a derived file, and splitting stems.
-    /// Null when the plugin never declared the <c>audioTools</c> hook.
+    /// Running ffmpeg over a track or a file of the plugin's own. Null when
+    /// the plugin never declared the <c>audioTools</c> hook.
     /// </summary>
     public IPluginAudioTools? AudioTools { get; }
-
-    /// <summary>
-    /// The server's own store of files derived from analysis. Null when the
-    /// plugin never declared the <c>derivedAudio</c> hook.
-    /// </summary>
-    public IPluginDerivedAudio? DerivedAudio { get; }
-
-    /// <summary>
-    /// Writing the DJ analysis record and the stem register. Null when the
-    /// plugin never declared the <c>musicAnalysisWrite</c> hook.
-    /// </summary>
-    public IPluginMusicAnalysisWriter? MusicAnalysisWriter { get; }
 
     /// <summary>
     /// Reading a track's lyrics state and writing generated timings. Null
@@ -166,8 +155,6 @@ public class PluginContext : IPluginContext
         IPluginJobs? jobs = null,
         IPluginMusicQuery? music = null,
         IPluginAudioTools? audioTools = null,
-        IPluginDerivedAudio? derivedAudio = null,
-        IPluginMusicAnalysisWriter? musicAnalysisWriter = null,
         IPluginMedia? media = null,
         IPluginLibraryImport? libraryImport = null,
         IPluginStorage? hostStorage = null,
@@ -190,15 +177,20 @@ public class PluginContext : IPluginContext
         Encoder = encoder;
         Jobs = jobs;
         AudioTools = audioTools;
-        DerivedAudio = derivedAudio;
-        MusicAnalysisWriter = musicAnalysisWriter;
         Lyrics = lyrics;
 
         PluginId = pluginId;
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
         ArgumentNullException.ThrowIfNull(services);
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        Events = new PluginEvents(pluginId, _eventBus, Logger);
+        // Asked for at each use, never held: the broker reads the plugins the
+        // manager holds, and the manager is built with the factory that builds
+        // this context. A host that registered none answers null, and what
+        // needs the broker's answer then refuses.
+        Func<IPluginCapabilityBroker?> broker = () =>
+            services.GetService(typeof(IPluginCapabilityBroker)) as IPluginCapabilityBroker;
+
+        Events = new PluginEvents(pluginId, _eventBus, Logger, broker);
         DataFolderPath = dataFolderPath ?? throw new ArgumentNullException(nameof(dataFolderPath));
         Configuration = new PluginConfiguration(dataFolderPath, storage);
         Secrets = secrets ?? throw new ArgumentNullException(nameof(secrets));
@@ -215,7 +207,20 @@ public class PluginContext : IPluginContext
         // calling Hub.PushAsync there should reach nobody rather than crash.
         Hub = hub ?? new NullPluginHubContext();
 
-        Player = new PluginPlayer(pluginId, Hub, grants);
+        // The music player is the server's and is built after the plugins, so
+        // it is asked for at each call like the broker above.
+        Player = new PluginPlayer(
+            pluginId,
+            Hub,
+            grants,
+            new PluginMusicPlayer(
+                pluginId,
+                broker,
+                () => services.GetService(typeof(IPluginMusicPlayerHost)) as IPluginMusicPlayerHost,
+                dataFolderPath,
+                storage
+            )
+        );
 
         HttpClient = PluginHttpClientFactory.Create(
             capabilities,

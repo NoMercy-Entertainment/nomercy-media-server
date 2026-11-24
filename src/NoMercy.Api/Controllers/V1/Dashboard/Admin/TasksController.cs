@@ -31,7 +31,6 @@ using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
-using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
@@ -56,15 +55,12 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Route("api/v{version:apiVersion}/dashboard/tasks", Order = 10)]
 public class TasksController(
     MediaContext mediaContext,
-    IDbContextFactory<MediaContext> mediaContextFactory,
     IQueueTaskRepository queueTaskRepository,
     IQueueCardMediaRepository queueCardMediaRepository,
     IIncompleteEncodeRepository incompleteEncodeRepository,
-    IAudioAnalysisStatisticsRepository audioAnalysisStatisticsRepository,
     IEncoderProcessRegistry processRegistry,
     ProcessThrottle processThrottle,
     IEncodingHistoryRepository historyRepository,
-    IAudioAnalysisScheduler audioAnalysisScheduler,
     IEventBus eventBus,
     QueueRunner queueRunner,
     IJobDispatcher jobDispatcher,
@@ -960,99 +956,6 @@ public class TasksController(
         return Ok(
             new StatusResponseDto<string> { Message = "Encoder queue resumed", Status = "success" }
         );
-    }
-
-    /// <summary>
-    /// Stop dispatching audio-analysis work. Analysis is opt-in background work
-    /// that costs real CPU per track, so an operator needs to stop it without
-    /// stopping an encode — and without waiting for a library to finish.
-    /// <para>
-    /// It shares the music queue with lyrics and metadata jobs, so this pauses
-    /// those too. That is the honest scope of the control and the dashboard
-    /// should say so.
-    /// </para>
-    /// </summary>
-    [HttpPost]
-    [Route("pause-music-queue")]
-    public async Task<IActionResult> PauseMusicQueue()
-    {
-        await queueRunner.Pause(QueueNames.Music);
-
-        return Ok(
-            new StatusResponseDto<string> { Message = "Music queue paused", Status = "success" }
-        );
-    }
-
-    [HttpPost]
-    [Route("resume-music-queue")]
-    public async Task<IActionResult> ResumeMusicQueue()
-    {
-        await queueRunner.Resume(QueueNames.Music);
-
-        return Ok(
-            new StatusResponseDto<string> { Message = "Music queue resumed", Status = "success" }
-        );
-    }
-
-    /// <summary>
-    /// Paused state and remaining depth for audio analysis, so the dashboard can
-    /// show progress rather than only a spinner. Depth is a count: the queue
-    /// listing returns a bounded sample, so counting the cards it hands back
-    /// under-reports a large library by orders of magnitude.
-    /// </summary>
-    [HttpGet]
-    [Route("audio-analysis/status")]
-    public async Task<IActionResult> AudioAnalysisStatus()
-    {
-        bool paused = IsQueuePausedOrFalse(QueueNames.Music);
-
-        int queued = await queueTaskRepository.CountQueuedMusicAnalysisAsync();
-
-        // Its own context, not the scoped one this controller is handed. The
-        // shared instance is already serving the request, and counting on it
-        // under concurrent load fails intermittently — green alone, 500 in a
-        // full parallel suite.
-        AudioAnalysisCounts counts = await audioAnalysisStatisticsRepository.GetCountsAsync();
-
-        return Ok(
-            new AudioAnalysisStatusDto
-            {
-                Paused = paused,
-                Queued = queued,
-                Analyzed = counts.Analyzed,
-                Failed = counts.Failed,
-                DjAnalyzed = counts.DjAnalyzed,
-                DjFailed = counts.DjFailed,
-                StemsBytes = counts.StemsBytes,
-            }
-        );
-    }
-
-    /// <summary>
-    /// Queues the outstanding audio analysis for every music library that wants
-    /// it, right now.
-    /// <para>
-    /// The extra, not the way in: analysis already runs as part of every import
-    /// and rescan, and the hourly sweep catches what those missed. This is for
-    /// the operator who does not want to wait for either.
-    /// </para>
-    /// </summary>
-    [HttpPost]
-    [Route("audio-analysis/sweep")]
-    public async Task<IActionResult> AudioAnalysisSweep()
-    {
-        // Its own context, not the scoped one this controller is handed, for
-        // the same reason AudioAnalysisStatus takes one: the shared instance is
-        // already serving this request.
-        await using MediaContext libraryContext = await mediaContextFactory.CreateDbContextAsync();
-
-        List<Ulid> libraryIds = await AudioAnalysisQueries
-            .LibrariesToAnalyze(libraryContext)
-            .ToListAsync();
-
-        int queued = await audioAnalysisScheduler.QueueAsync(libraryIds);
-
-        return Ok(new { queued });
     }
 
     /// <summary>

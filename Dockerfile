@@ -11,9 +11,10 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy source and restore dependencies
-COPY NoMercy.Server.sln ./
+COPY NoMercy.Server.sln Directory.Build.props Directory.Packages.props nuget.config .editorconfig ./
 COPY src/ src/
 COPY assets/ assets/
+COPY libs/ libs/
 RUN dotnet restore src/NoMercy.Service/NoMercy.Service.csproj
 
 # Build and publish
@@ -59,8 +60,10 @@ COPY --from=build /app/publish .
 # Set ownership
 RUN chown -R nomercy:nomercy /app
 
-# Switch to non-root user
-USER nomercy
+# Start as root only so the entrypoint can hand an old root-owned volume to
+# nomercy; it then drops to nomercy before the server starts.
+COPY docker/entrypoint.sh /usr/local/bin/nomercy-entrypoint.sh
+RUN chmod +x /usr/local/bin/nomercy-entrypoint.sh
 
 # Environment variables
 ENV ASPNETCORE_ENVIRONMENT=Production
@@ -77,5 +80,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -fsk https://127.0.0.1:7626/health || curl -fs http://127.0.0.1:7626/health || exit 1
 
 # Entry point
-ENTRYPOINT ["dotnet", "NoMercyMediaServer.dll"]
+ENTRYPOINT ["/usr/local/bin/nomercy-entrypoint.sh", "dotnet", "NoMercyMediaServer.dll"]
 CMD ["--internal-port", "7626"]

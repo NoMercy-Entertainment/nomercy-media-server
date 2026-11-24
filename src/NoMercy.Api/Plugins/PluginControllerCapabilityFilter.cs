@@ -61,38 +61,65 @@ public class PluginControllerCapabilityFilter(
             return Task.CompletedTask;
         }
 
+        // The action's own attribute is listed after its controller's.
+        PluginRequiresAttribute? requires = context
+            .ActionDescriptor.EndpointMetadata.OfType<PluginRequiresAttribute>()
+            .LastOrDefault();
+        bool ownerOnly = requires?.Access == PluginRouteAccess.Owner;
+
         // A LAN device has no account either. The LAN route already checked
         // its network, its credential and that this route is one the manifest
         // names for devices; it is admitted to this plugin and no other.
         if (context.HttpContext.Features.Get<PluginLanDispatch>() is { } lan)
         {
-            if (lan.PluginId == pluginId)
-                return next();
+            if (lan.PluginId != pluginId)
+            {
+                context.Result = new NotFoundResult();
+                return Task.CompletedTask;
+            }
 
-            context.Result = new NotFoundResult();
-            return Task.CompletedTask;
+            return ownerOnly ? Refuse(context, pluginId) : next();
         }
 
         // A surface the manifest declares open has no account to resolve
-        // access for. Asking anyway refuses every caller, which is an open
-        // surface that is shut.
+        // access for. Only an owner-only action asks who is calling.
         if (info.Capabilities.RestAnonymous)
-            return next();
-
-        if (
-            accessResolver.Resolve(pluginId, context.HttpContext.User.UserId()) == PluginAccess.None
-        )
         {
-            context.Result = new ObjectResult(
-                new DataResponseDto<PluginRefusal> { Data = PluginAccessRefusal.For(pluginId) }
-            )
-            {
-                StatusCode = StatusCodes.Status403Forbidden,
-            };
-
-            return Task.CompletedTask;
+            return ownerOnly && !accessResolver.IsOwner(context.HttpContext.User.UserId())
+                ? Refuse(context, pluginId)
+                : next();
         }
 
+        PluginAccess granted = accessResolver.Resolve(pluginId, context.HttpContext.User.UserId());
+
+        if (granted == PluginAccess.None)
+            return Refuse(context, pluginId);
+
+        PluginCaller caller = PluginCallers.For(
+            context.HttpContext.User,
+            granted,
+            context.HttpContext.Request.Headers.AcceptLanguage.ToString(),
+            context.HttpContext.Request.Query["surface"].ToString(),
+            accessResolver
+        );
+
+        if (requires is not null && !caller.Admits(requires.Access))
+            return Refuse(context, pluginId);
+
+        context.HttpContext.Items[PluginControllerBase.CallerItemKey] = caller;
+
         return next();
+    }
+
+    private static Task Refuse(ActionExecutingContext context, Ulid pluginId)
+    {
+        context.Result = new ObjectResult(
+            new DataResponseDto<PluginRefusal> { Data = PluginAccessRefusal.For(pluginId) }
+        )
+        {
+            StatusCode = StatusCodes.Status403Forbidden,
+        };
+
+        return Task.CompletedTask;
     }
 }

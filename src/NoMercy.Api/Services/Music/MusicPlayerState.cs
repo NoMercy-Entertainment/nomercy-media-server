@@ -121,6 +121,13 @@ public class MusicPlayerState
     [JsonIgnore]
     public bool CrossfadeSignalSent { get; set; }
 
+    // Counts the times the upcoming tracks were put in another order while the
+    // same track played. MusicPlaybackService reads it so that a broadcast
+    // whose only news is the new order is never dropped as an echo of the one
+    // before it.
+    [JsonIgnore]
+    public int QueueVersion { get; set; }
+
     // Set to true by CrossfadeStartCommand; suppresses server auto-advance during the
     // client's crossfade window.  Cleared by CrossfadeCompleteCommand or the safety timeout.
     [JsonIgnore]
@@ -136,6 +143,22 @@ public class MusicPlayerState
     // cancel the suppression, preventing multi-device conflicts.
     [JsonIgnore]
     public string? CrossfadeDeviceId { get; set; }
+
+    // The track that played and the device that held the session when CrossfadeStart came.
+    // The suppression counts only while both are still so: a skip or another device taking
+    // over ends it there and then, where it used to stand until its timeout. With a join of
+    // a minute or two that timeout held back the advance of a short track that followed.
+    // See MusicJoinRules.Reconcile.
+    [JsonIgnore]
+    public Guid? CrossfadeTrackId { get; set; }
+
+    [JsonIgnore]
+    public string? CrossfadeHeldDeviceId { get; set; }
+
+    // Audio a plugin offered for the join out of the playing track, until it was played or
+    // no longer fits what plays. See MusicJoinRules.
+    [JsonIgnore]
+    public MusicTransitionOffer? Transition { get; set; }
 
     // Proof-of-life clock for the active device (DeviceId above). Refreshed by
     // MusicHub.ReportPositionCommand while playing and by

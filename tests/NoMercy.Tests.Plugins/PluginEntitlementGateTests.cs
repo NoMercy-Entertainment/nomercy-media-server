@@ -58,7 +58,7 @@ public class PluginEntitlementGateTests
             )
             .Check(Paid, PluginTier.Paid);
 
-        refusal!.Code.Should().Be(PluginRefusalCodes.EntitlementDormant);
+        refusal!.Code.Should().Be(PluginRefusalCodes.EntitlementSuspended);
         refusal.Severity.Should().Be(PluginRefusalSeverity.Blocked);
         refusal.Why.Should().Contain("paused");
         refusal.Fix.Should().NotContain("Buy it");

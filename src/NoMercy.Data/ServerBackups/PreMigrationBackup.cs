@@ -23,7 +23,6 @@ public sealed class PreMigrationBackup(
     ILogger<PreMigrationBackup> logger
 ) : IPreMigrationBackup
 {
-    private const string TimestampFormat = "yyyyMMddHHmmss";
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(10);
 
     public bool BackupBeforeMigration(string databasePath, int pendingMigrationCount)
@@ -36,8 +35,10 @@ public sealed class PreMigrationBackup(
         {
             BackupFiles.CreatePrivateDirectory(storage, options.BackupRoot);
 
-            string timestamp = clock.GetUtcNow().UtcDateTime.ToString(TimestampFormat);
-            string backupFileName = $"{databaseName}.{timestamp}.db";
+            string backupFileName = DatabaseCopyName.Create(
+                databaseName,
+                clock.GetUtcNow().UtcDateTime
+            );
             string backupPath = Path.Combine(options.BackupRoot, backupFileName);
             if (storage.FileExists(backupPath))
                 throw new IOException($"Backup file already exists: {backupPath}");

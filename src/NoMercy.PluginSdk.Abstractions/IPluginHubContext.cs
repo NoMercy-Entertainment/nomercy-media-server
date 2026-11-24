@@ -40,4 +40,11 @@ public interface IPluginHubContext
         string method,
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
     );
+
+    /// <summary>The same registration, refusing a caller the access does not admit.</summary>
+    void HandleWithAccess(
+        string method,
+        PluginRouteAccess access,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    );
 }

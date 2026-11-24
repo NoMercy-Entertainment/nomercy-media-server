@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Buffers.Binary;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Encoder.Composition;
@@ -341,9 +342,74 @@ public class FfmpegEpisodeSignalProbeTests
             .Contain("ocr=language=eng,metadata=print:key=lavfi.ocr.text:file=ocr.txt");
     }
 
+    [Fact]
+    public async Task ReadText_WithoutATesseractModel_WarnsWithTheCause()
+    {
+        Mock<IProcessRunner> runner = Runner((_, _) => { });
+        Mock<ITesseractModelManager> tesseract = new();
+        tesseract
+            .Setup(t => t.EnsureLanguageModelAsync("eng", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("no model"));
+        CapturingLogger log = new();
+
+        await Probe(runner, tesseract.Object, log)
+            .ReadTextAsync(_source, 960, CancellationToken.None);
+
+        log.Entries.Should()
+            .Contain(e => e.Level == LogLevel.Warning && e.Exception!.Message == "no model");
+    }
+
+    [Fact]
+    public async Task ReadText_WhenFfmpegFails_WarnsWithTheStderrTail()
+    {
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<IReadOnlyDictionary<string, string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(new ProcessResult(1, "", "No such filter: 'ocr'", TimeSpan.Zero));
+        Mock<ITesseractModelManager> tesseract = new();
+        tesseract
+            .Setup(t => t.EnsureLanguageModelAsync("eng", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Path.Combine(Path.GetTempPath(), "tessdata", "eng.traineddata"));
+        CapturingLogger log = new();
+
+        OcrScan? ocr = await Probe(runner, tesseract.Object, log)
+            .ReadTextAsync(_source, 960, CancellationToken.None);
+
+        ocr.Should().BeNull();
+        log.Entries.Should()
+            .Contain(e => e.Level == LogLevel.Warning && e.Message.Contains("No such filter"));
+    }
+
+    private sealed class CapturingLogger : ILogger<FfmpegEpisodeSignalProbe>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Entries.Add((logLevel, formatter(state, exception), exception));
+    }
+
     private FfmpegEpisodeSignalProbe Probe(
         Mock<IProcessRunner> runner,
-        ITesseractModelManager? tesseract = null
+        ITesseractModelManager? tesseract = null,
+        ILogger<FfmpegEpisodeSignalProbe>? logger = null
     ) =>
         new(
             new EncoderOptions
@@ -355,7 +421,7 @@ public class FfmpegEpisodeSignalProbeTests
             _storage,
             tesseract ?? new Mock<ITesseractModelManager>().Object,
             new MediaActivityMonitor(),
-            NullLogger<FfmpegEpisodeSignalProbe>.Instance
+            logger ?? NullLogger<FfmpegEpisodeSignalProbe>.Instance
         );
 
     private static Mock<IProcessRunner> Runner(

@@ -186,36 +186,6 @@ public class MediaContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder
-            .Entity<TrackAudioAnalysis>()
-            .HasOne(a => a.Track)
-            .WithOne(t => t.AudioAnalysis)
-            .HasForeignKey<TrackAudioAnalysis>(a => a.TrackId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder
-            .Entity<TrackDjAnalysis>()
-            .HasOne(analysis => analysis.Track)
-            .WithOne()
-            .HasForeignKey<TrackDjAnalysis>(analysis => analysis.TrackId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder
-            .Entity<TrackStem>()
-            .HasOne(stem => stem.Track)
-            .WithMany()
-            .HasForeignKey(stem => stem.TrackId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        // Eviction deletes the register row; the stems that pointed at the file
-        // have nothing left to point at and go with it.
-        modelBuilder
-            .Entity<TrackStem>()
-            .HasOne(stem => stem.DerivedAudio)
-            .WithMany()
-            .HasForeignKey(stem => stem.StorageKey)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder
             .Model.GetEntityTypes()
             .SelectMany(t => t.GetProperties())
             .Where(p => p.ClrType == typeof(string))
@@ -244,19 +214,6 @@ public class MediaContext : DbContext
                 .Entity(entityType.ClrType)
                 .ToTable(tb => tb.HasTrigger($"update_{tableName}_updated_at"));
         }
-
-        // Audio analysis is part of every music import, so a library that says
-        // nothing about it gets it. The sentinel — the value EF reads as "not
-        // set" and leaves out of the INSERT — is that same "on", which is what
-        // keeps the opt-out real: an explicit "off" differs from it and is
-        // written, instead of being dropped and replaced by the store default.
-        // EF infers the sentinel from the property initializer on Library, but
-        // the opt-out is too important to rest on an inference.
-        modelBuilder
-            .Entity<Library>()
-            .Property(library => library.AnalyzeAudio)
-            .HasDefaultValue(true)
-            .HasSentinel(true);
 
         // Explicit cascade for direct entity → Library FKs. These use ConfigurationSource.Explicit
         // so they cannot be reset by convention re-processing (the mutation loop above only sets
@@ -644,10 +601,6 @@ public class MediaContext : DbContext
     public virtual DbSet<PlaylistTrack> PlaylistTrack { get; init; }
     public virtual DbSet<TrackUser> TrackUser { get; init; }
     public virtual DbSet<Track> Tracks { get; init; }
-    public virtual DbSet<TrackAudioAnalysis> TrackAudioAnalysis { get; init; }
-    public virtual DbSet<TrackDjAnalysis> TrackDjAnalysis { get; init; }
-    public virtual DbSet<TrackStem> TrackStems { get; init; }
-    public virtual DbSet<DerivedAudio> DerivedAudio { get; init; }
     public virtual DbSet<ReleaseGroup> ReleaseGroups { get; init; }
     public virtual DbSet<AlbumReleaseGroup> AlbumReleaseGroup { get; init; }
     public virtual DbSet<ArtistReleaseGroup> ArtistReleaseGroup { get; init; }

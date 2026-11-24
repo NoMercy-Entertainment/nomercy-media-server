@@ -55,21 +55,14 @@ public static class PluginLibraryServiceCollectionExtensions
         // which a folder is means reading the driver row.
         services.AddSingleton<IPluginFreeSpaceProbe, PluginFolderFreeSpaceProbe>();
 
-        // The three analysis facades: audio tools, the derived-audio store and
-        // the DJ analysis writer. Same story as the three above them - without
-        // this, a plugin doing DJ-grade analysis has no host-mediated route to
-        // ffmpeg, the derived store or the analysis record at all.
+        // Audio tools. Same story as the three above them - without this, a
+        // plugin that works on audio has no host-mediated route to ffmpeg at all.
         services.AddSingleton<IPluginAudioToolsFactory, PluginAudioToolsFactory>();
         // RoFormer or Spleeter, and the filter's refusal remembered, once for
         // the whole machine rather than per plugin (#637).
         services.AddSingleton<IStemsplitSourceSelector, StemsplitSourceSelector>();
         // One RoFormer run on the GPU at a time, across every plugin.
         services.AddSingleton<IRoformerGpuSlot, RoformerGpuSlot>();
-        services.AddSingleton<IPluginDerivedAudio, PluginDerivedAudio>();
-        services.AddSingleton<
-            IPluginMusicAnalysisWriterFactory,
-            PluginMusicAnalysisWriterFactory
-        >();
 
         // Generated lyric timings: the plugin reads the state, aligns, and
         // writes back under the host's rules (never over synced provider

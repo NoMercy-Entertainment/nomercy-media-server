@@ -31,13 +31,31 @@ public sealed class PluginDelegateHubHandler(Ulid pluginId) : IPluginHubHandler
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>>
     > _methods = new(StringComparer.Ordinal);
 
+    private readonly ConcurrentDictionary<string, PluginRouteAccess> _access = new(
+        StringComparer.Ordinal
+    );
+
     public Ulid PluginId => pluginId;
 
     /// <summary>Last registration wins, so a reload replaces rather than doubles.</summary>
     public void Register(
         string method,
         Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
-    ) => _methods[method] = handler;
+    ) => Register(method, PluginRouteAccess.Shared, handler);
+
+    public void Register(
+        string method,
+        PluginRouteAccess access,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    )
+    {
+        _access[method] = access;
+        _methods[method] = handler;
+    }
+
+    /// <summary>Who may call a method, or null when no delegate was registered for it.</summary>
+    public PluginRouteAccess? AccessFor(string method) =>
+        _access.TryGetValue(method, out PluginRouteAccess access) ? access : null;
 
     public async Task HandleAsync(
         PluginHubMessage message,

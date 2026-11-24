@@ -239,6 +239,16 @@ public class NetworkChangeMonitor : IHostedService, IDisposable
 
     public async Task SendUpdate(string reason)
     {
+        if (ServerRegistrationSwitch.IsSet)
+        {
+            _logger.LogDebug(
+                "Skipping server information update ({Reason}) — {Variable} is set",
+                reason,
+                ServerRegistrationSwitch.VariableName
+            );
+            return;
+        }
+
         try
         {
             Dictionary<string, string> serverData = new()

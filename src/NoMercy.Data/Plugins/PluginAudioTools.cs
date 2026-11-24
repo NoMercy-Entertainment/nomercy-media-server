@@ -17,7 +17,6 @@ using NoMercy.Database.Models.Music;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
-using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk;
@@ -32,9 +31,8 @@ namespace NoMercy.Data.Plugins;
 /// of <see cref="IPluginAudioTools" />.
 /// <para>
 /// Every rejection comes back as a refusal in words rather than as an
-/// exception, for the same reason the analysis writer does it: a plugin's
-/// sweep runs unattended, and a stack trace nobody reads is worth nothing
-/// next to a reason the owner can act on. That holds for failures nobody
+/// exception: a plugin's sweep runs unattended, and a stack trace nobody reads
+/// is worth nothing next to a reason the owner can act on. That holds for failures nobody
 /// planned for too - both public members catch what they did not expect, log
 /// it at Warning and refuse with the exception's type name. Cancellation the
 /// caller asked for is the one thing that still propagates.
@@ -53,9 +51,6 @@ public sealed class PluginAudioTools(
     IProcessRunner processRunner,
     IStorage storage,
     IStorageDriver storageDriver,
-    IStorage derivedStorage,
-    IDerivedAudioStore store,
-    IPluginMusicAnalysisWriterFactory writerFactory,
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
     IStemsplitSourceSelector stemsplitSources,
@@ -67,8 +62,7 @@ public sealed class PluginAudioTools(
 ) : IPluginAudioTools
 {
     /// <summary>
-    /// Matches the analysis pass: ffmpeg on a stalled mount never returns on
-    /// its own.
+    /// ffmpeg on a stalled mount never returns on its own.
     /// <para>
     /// Init-only and internal rather than a constant so the tests can prove
     /// the timeout path without waiting ten minutes for it. Every production
@@ -118,19 +112,6 @@ public sealed class PluginAudioTools(
     /// <summary>The clock a render's limits and its exit grace period count on.</summary>
     internal TimeProvider Clock { get; init; } = TimeProvider.System;
 
-    /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
-    private const string TempFolder = "tmp";
-
-    // Format and content type live in StemFormats; only the sample rate is
-    // this encoder's own.
-    private const int OpusSampleRate = 48000;
-
-    /// <summary>The share of a track a mix into it draws from.</summary>
-    private const double MixInShare = 0.20;
-
-    /// <summary>Where the window a mix out of a track draws from starts.</summary>
-    private const double MixOutStart = 0.75;
-
     private const string FfmpegMissing = "ffmpeg is not installed";
     private const string StemsplitModelMissing = "the stemsplit model is not installed";
     private const string WhisperModelMissing = "the whisper model is not installed";
@@ -143,7 +124,6 @@ public sealed class PluginAudioTools(
     private const string EspeakDataMissing =
         "the espeak-ng data is missing from the ffmpeg folder; it ships with nomercy-ffmpeg v1.0.46 and later";
     private const string RunInProgress = "another ffmpeg run of this plugin is still in progress";
-    private const string NoStemOutput = "stemsplit produced no output";
     private const string RoformerRefused =
         "stemsplit refused to run RoFormer on this machine's GPU; nothing was kept";
 
@@ -888,322 +868,6 @@ public sealed class PluginAudioTools(
     private static string PastTheQuota(PluginRefusal refusal) =>
         $"the render does not fit the plugin's disk quota. {refusal.Fix}";
 
-    public Task<PluginStemSplitResult> SplitStemsAsync(
-        string trackId,
-        PluginStemCoverage coverage,
-        PluginStemSet stemSet,
-        CancellationToken ct = default
-    ) =>
-        PluginCallGuard.RunAsync(
-            pluginId.ToString(),
-            nameof(SplitStemsAsync),
-            () => SplitStemsCoreAsync(trackId, coverage, stemSet, ct),
-            PluginStemSplitResult.Refused,
-            _logger
-        );
-
-    private async Task<PluginStemSplitResult> SplitStemsCoreAsync(
-        string trackId,
-        PluginStemCoverage coverage,
-        PluginStemSet stemSet,
-        CancellationToken ct
-    )
-    {
-        // The 4stems model is not in the ffmpeg build yet. Saying so beats
-        // silently handing back two stems a caller asked four of.
-        if (stemSet == PluginStemSet.Four)
-        {
-            return PluginStemSplitResult.Refused("four-stem splitting is not available yet");
-        }
-
-        string? ffmpegPath = ResolveFfmpegPath();
-        if (ffmpegPath is null)
-        {
-            return PluginStemSplitResult.Refused(FfmpegMissing);
-        }
-
-        if (!StemsplitModelPresent())
-        {
-            return PluginStemSplitResult.Refused(StemsplitModelMissing);
-        }
-
-        if (!Guid.TryParse(trackId, out Guid id))
-        {
-            return PluginStemSplitResult.Refused($"track {trackId} has no file");
-        }
-
-        TrackFile? file = await LoadTrackFileAsync(id, ct);
-        if (file is null)
-        {
-            return PluginStemSplitResult.Refused($"track {trackId} has no file");
-        }
-
-        // Only a windowed split needs the duration. A full split of a track
-        // the scan never timed is still a perfectly good split, so it is not
-        // refused for a value it does not use.
-        StemWindow? window = BuildWindow(coverage, file.DurationSeconds);
-        if (window is null)
-        {
-            return PluginStemSplitResult.Refused($"track {trackId} has no duration");
-        }
-
-        if (!await _oneRunAtATime.WaitAsync(0, ct))
-        {
-            return PluginStemSplitResult.Refused(RunInProgress);
-        }
-
-        try
-        {
-            return await SplitInsideTheLockAsync(ffmpegPath, id, file, coverage, window, ct);
-        }
-        finally
-        {
-            _oneRunAtATime.Release();
-        }
-    }
-
-    /// <summary>
-    /// The split itself, with the one-ffmpeg-per-plugin lock already held.
-    /// Split out so the lock's <c>finally</c> stays next to its
-    /// <c>WaitAsync</c> instead of a hundred lines away from it.
-    /// </summary>
-    private async Task<PluginStemSplitResult> SplitInsideTheLockAsync(
-        string ffmpegPath,
-        Guid trackId,
-        TrackFile file,
-        PluginStemCoverage coverage,
-        StemWindow window,
-        CancellationToken ct
-    )
-    {
-        await derivedStorage.CreateDirectoryAsync(TempFolder, ct);
-
-        // ffmpeg writes the two stems as plain files first; only content that
-        // finished being written gets a content-addressed key.
-        Ulid batch = Ulid.NewUlid();
-        string vocalsTemp = $"{TempFolder}/{batch}-vocals.opus";
-        string accompanimentTemp = $"{TempFolder}/{batch}-accompaniment.opus";
-
-        try
-        {
-            await using LocalPathLease inputLease = await storage.AcquireLocalPathAsync(
-                file.Path,
-                ct
-            );
-
-            // A lease on a path ffmpeg WRITES to, which LocalPathLease's
-            // read-only staging contract only allows because the derived store
-            // is always local. A remote one would need a put-from-lease helper.
-            await using LocalPathLease vocalsLease = await derivedStorage.AcquireLocalPathAsync(
-                vocalsTemp,
-                ct
-            );
-            await using LocalPathLease accompanimentLease =
-                await derivedStorage.AcquireLocalPathAsync(accompanimentTemp, ct);
-
-            StemsplitSource source = await stemsplitSources.ChooseAsync(RoformerPreset.Full, ct);
-            string? bannerLine;
-            Queue<string> stdErrTail;
-            FollowedRun run;
-
-            while (true)
-            {
-                string[] arguments = PluginAudioArguments.StemSplit(
-                    inputLease.Path,
-                    window.Arguments,
-                    source.Options,
-                    vocalsLease.Path,
-                    accompanimentLease.Path
-                );
-
-                string? banner = null;
-                Queue<string> tail = new();
-                string? refusal = null;
-
-                void CaptureStdErr(string line)
-                {
-                    banner ??= line;
-                    refusal ??= StemsplitLog.IsRefusal(line) ? line : null;
-                    tail.Enqueue(line);
-                    if (tail.Count > 5)
-                    {
-                        tail.Dequeue();
-                    }
-                }
-
-                run = await RunFollowingStemsplitAsync(
-                    ffmpegPath,
-                    arguments,
-                    null,
-                    CaptureStdErr,
-                    source.Engine == StemsplitEngine.Roformer ? 1 : 0,
-                    RunTimeout,
-                    watchForExitMarker: true,
-                    ct
-                );
-                bannerLine = banner;
-                stdErrTail = tail;
-
-                if (source.Engine != StemsplitEngine.Roformer || refusal is null)
-                {
-                    break;
-                }
-
-                // The refused run may have opened both files already, empty;
-                // ffmpeg will not write over a file that is there.
-                await DeleteTempAsync(vocalsTemp, CancellationToken.None);
-                await DeleteTempAsync(accompanimentTemp, CancellationToken.None);
-                await FallBackToSpleeterAsync([RoformerPreset.Full], refusal, ct);
-                source = StemsplitSource.Spleeter;
-            }
-
-            ProcessResult? result = run.Result;
-
-            if (result is null)
-            {
-                return PluginStemSplitResult.Refused(
-                    run.Stalled
-                        ? $"stemsplit made no progress: RoFormer handed out no chunk for {RoformerNoChunkLimit.TotalSeconds:0} seconds, and the run was ended"
-                        : $"stemsplit timed out after {RunTimeout.TotalSeconds:0} seconds"
-                );
-            }
-
-            if (result.ExitCode != 0)
-            {
-                _logger.LogWarning(
-                    "plugin {PluginId}: stemsplit exited with {Exit} for track {TrackId}: {StdErr}",
-                    pluginId,
-                    result.ExitCode,
-                    trackId,
-                    string.Join(" | ", stdErrTail)
-                );
-
-                return PluginStemSplitResult.Refused($"stemsplit exited with {result.ExitCode}");
-            }
-
-            // Exit code 0 is ffmpeg's word, not proof: a filter that produced
-            // no frames still exits clean, and reading a file that is not
-            // there would surface as an IOException from inside the store
-            // rather than as something a plugin can act on.
-            if (
-                !await derivedStorage.ExistsAsync(vocalsTemp, ct)
-                || !await derivedStorage.ExistsAsync(accompanimentTemp, ct)
-            )
-            {
-                _logger.LogWarning(
-                    "plugin {PluginId}: stemsplit exited 0 but wrote no output for track {TrackId}",
-                    pluginId,
-                    trackId
-                );
-
-                return PluginStemSplitResult.Refused(NoStemOutput);
-            }
-
-            // Both files land in the store before anything is registered, so a
-            // registration that refuses halfway leaves no stem stored without
-            // its twin.
-            DerivedAudioEntry vocals = await StoreTempAsync(vocalsTemp, ct);
-            DerivedAudioEntry accompaniment = await StoreTempAsync(accompanimentTemp, ct);
-
-            string producerVersion =
-                $"{source.ModelId}@{PluginAudioArguments.FfmpegVersion(bannerLine)}";
-
-            IPluginMusicAnalysisWriter writer = writerFactory.CreateFor(pluginId);
-
-            (string Kind, DerivedAudioEntry Entry)[] produced =
-            [
-                ("vocals", vocals),
-                ("accompaniment", accompaniment),
-            ];
-
-            // Registered as one write: a vocals row whose accompaniment was
-            // refused describes a split no renderer can use.
-            PluginWriteResult write = await writer.RegisterStemsAsync(
-                produced
-                    .Select(stem => new PluginTrackStem(
-                        trackId,
-                        stem.Kind,
-                        coverage,
-                        window.StartMs,
-                        window.EndMs,
-                        StemFormats.Opus,
-                        OpusSampleRate,
-                        stem.Entry.Key,
-                        producerVersion
-                    )
-                    {
-                        Engine = source.EngineName,
-                    })
-                    .ToList(),
-                ct
-            );
-
-            if (!write.Ok)
-            {
-                return PluginStemSplitResult.Refused(write.Refusal!);
-            }
-
-            List<PluginStemFile> stems = produced
-                .Select(stem => new PluginStemFile(
-                    stem.Kind,
-                    coverage,
-                    stem.Entry.Key,
-                    stem.Entry.Bytes
-                ))
-                .ToList();
-
-            return new PluginStemSplitResult(stems, null);
-        }
-        finally
-        {
-            // Every way out of the block above would otherwise strand two
-            // scratch files. CancellationToken.None deliberately: cleanup after
-            // a cancellation is exactly when it matters most.
-            await DeleteTempAsync(vocalsTemp, CancellationToken.None);
-            await DeleteTempAsync(accompanimentTemp, CancellationToken.None);
-        }
-    }
-
-    /// <summary>
-    /// Copies one finished temp file into the content-addressed store. The
-    /// temp itself is dropped by the caller's <c>finally</c>, so a throw in
-    /// here cannot strand it.
-    /// </summary>
-    private async Task<DerivedAudioEntry> StoreTempAsync(string tempPath, CancellationToken ct)
-    {
-        DerivedAudioEntry entry;
-        await using (Stream content = await derivedStorage.OpenReadAsync(tempPath, ct))
-        {
-            entry = await store.PutAsync(content, StemFormats.OggContentType, ct);
-        }
-
-        return entry;
-    }
-
-    /// <summary>
-    /// Best-effort: a temp file that will not go is a wasted megabyte the
-    /// derived store's own sweep clears later, never a reason to fail a split
-    /// whose stems are already safely stored.
-    /// </summary>
-    private async Task DeleteTempAsync(string tempPath, CancellationToken ct)
-    {
-        try
-        {
-            if (await derivedStorage.ExistsAsync(tempPath, ct))
-            {
-                await derivedStorage.DeleteAsync(tempPath, ct);
-            }
-        }
-        catch (IOException exception)
-        {
-            _logger.LogWarning(
-                exception,
-                "plugin {PluginId}: could not remove the stem scratch file",
-                pluginId
-            );
-        }
-    }
-
     /// <summary>
     /// One ffmpeg run with the host's own timeout on top of the caller's
     /// token. Null means the host ended it - the timeout fired, or
@@ -1551,43 +1215,9 @@ public sealed class PluginAudioTools(
             return ResolvePluginFileInput(input);
         }
 
-        if (input.StorageKey is not null)
-        {
-            // Checked before the store is asked anything: answering about a key
-            // means slicing it into a path, and this key came from a plugin.
-            if (!DerivedAudioKey.IsValid(input.StorageKey))
-            {
-                return new(null, $"storage key {input.StorageKey} is not in the derived store");
-            }
-
-            // One call does both jobs. A run has ten minutes to finish and
-            // eviction only spares what was used inside its grace window, so
-            // the key is kept alive before ffmpeg opens the file rather than
-            // after it closes it - and the touch answers whether there was
-            // still an entry to keep alive, which is the same question a
-            // separate existence check used to ask a moment earlier.
-            //
-            // A true is enough for the whole run: the touch moved LastUsedAt
-            // inside the grace window under the store's own key lock, so
-            // DeleteIfStillColdAsync's re-check under that same lock finds the
-            // key warm and skips it for the rest of the sweep.
-            if (!await store.TouchAsync(input.StorageKey, ct))
-            {
-                return new(null, $"storage key {input.StorageKey} is not in the derived store");
-            }
-
-            return new(
-                await derivedStorage.AcquireLocalPathAsync(
-                    store.RelativePath(input.StorageKey),
-                    ct
-                ),
-                null
-            );
-        }
-
         if (input.TrackId is null)
         {
-            return new(null, "the input names neither a track nor a derived file");
+            return new(null, "the input names neither a track nor a file of the plugin's own");
         }
 
         if (!Guid.TryParse(input.TrackId, out Guid trackId))
@@ -1611,7 +1241,7 @@ public sealed class PluginAudioTools(
     /// </summary>
     private InputResolution ResolvePluginFileInput(PluginAudioInput input)
     {
-        if (input.TrackId is not null || input.StorageKey is not null)
+        if (input.TrackId is not null)
         {
             return new(null, "the input names more than one source");
         }
@@ -1666,46 +1296,8 @@ public sealed class PluginAudioTools(
             return null;
         }
 
-        return new(
-            storageDriver.CombinePath(track.HostFolder, track.Filename),
-            PluginMusicQuery.ParseDurationSeconds(track.Duration)
-        );
+        return new(storageDriver.CombinePath(track.HostFolder, track.Filename));
     }
-
-    /// <summary>
-    /// The seek arguments for a coverage, and the same window in milliseconds
-    /// for the register row. Null when a window was asked for and the track's
-    /// duration is unknown, which is the one case that cannot be computed.
-    /// </summary>
-    private static StemWindow? BuildWindow(PluginStemCoverage coverage, double? durationSeconds)
-    {
-        if (coverage == PluginStemCoverage.Full)
-        {
-            return new([], null, null);
-        }
-
-        if (durationSeconds is not > 0)
-        {
-            return null;
-        }
-
-        double duration = durationSeconds.Value;
-
-        if (coverage == PluginStemCoverage.MixIn)
-        {
-            double end = duration * MixInShare;
-            return new(["-t", PluginAudioArguments.Seconds(end)], 0, Milliseconds(end));
-        }
-
-        double start = duration * MixOutStart;
-        return new(
-            ["-ss", PluginAudioArguments.Seconds(start)],
-            Milliseconds(start),
-            Milliseconds(duration)
-        );
-    }
-
-    private static int Milliseconds(double seconds) => (int)Math.Round(seconds * 1000);
 
     /// <summary>An ffmpeg run's result, null when the host ended it, and whether a RoFormer split that stopped moving is why.</summary>
     private sealed record FollowedRun(ProcessResult? Result, bool Stalled);
@@ -1713,9 +1305,6 @@ public sealed class PluginAudioTools(
     /// <summary>A resolved input, or the reason there is none. Exactly one of the two is set.</summary>
     private sealed record InputResolution(LocalPathLease? Lease, string? Refusal);
 
-    /// <summary>Where a track's audio is, and how long it runs when the library knows.</summary>
-    private sealed record TrackFile(string Path, double? DurationSeconds);
-
-    /// <summary>What a coverage means to ffmpeg, and what it means to the stem register.</summary>
-    private sealed record StemWindow(string[] Arguments, int? StartMs, int? EndMs);
+    /// <summary>Where a track's audio is.</summary>
+    private sealed record TrackFile(string Path);
 }

@@ -12,6 +12,7 @@
 using NoMercy.Api.Hubs;
 using NoMercy.Api.Services.Music;
 using NoMercy.Data.Services.Music;
+using NoMercy.PluginSdk.Player;
 using NoMercy.Setup.Cast;
 
 namespace NoMercy.Service.Extensions;
@@ -23,8 +24,12 @@ public static class MusicHubServiceExtensions
         // Singletons - shared state across requests
         services.AddSingleton<MusicPlayerStateManager>();
         services.AddSingleton<MusicActiveDeviceRegistry>();
+        services.AddSingleton<MusicPlaybackAnnouncer>();
+        services.AddSingleton<MusicTransitionLinks>();
         services.AddSingleton<MusicPlaybackService>();
         services.AddSingleton<MusicPlaybackCommandHandler>();
+        // What a plugin reads and arranges of a listener's music.
+        services.AddSingleton<IPluginMusicPlayerHost, PluginMusicPlayerHost>();
         // Single-flight lyric fetch coalescing across concurrent device requests.
         services.AddSingleton<LyricsResolver>();
         services.AddSingleton<LyricsRequestedNotifier>();

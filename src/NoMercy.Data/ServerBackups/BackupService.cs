@@ -24,7 +24,8 @@ public sealed class BackupService(
     IBackupSetWriter writer,
     BackupOptions options,
     TimeProvider clock,
-    ILogger<BackupService> logger
+    ILogger<BackupService> logger,
+    IVolumeInspector? volumes = null
 ) : IBackupService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -37,10 +38,8 @@ public sealed class BackupService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            BackupManifest manifest = await writer.WriteAsync(
+            BackupManifest manifest = await WriteSetAsync(
                 reason,
-                options.Databases,
-                options.ConfigRoot,
                 keepDamagedCopies: false,
                 cancellationToken
             );
@@ -93,10 +92,8 @@ public sealed class BackupService(
             // The safety set comes first and the request second: a request on disk
             // always names a safety set that exists. No prune runs in between,
             // because every prune waits for this gate.
-            BackupManifest safety = await writer.WriteAsync(
+            BackupManifest safety = await WriteSetAsync(
                 $"before restoring {backupId}",
-                options.Databases,
-                options.ConfigRoot,
                 keepDamagedCopies: true,
                 CancellationToken.None
             );
@@ -202,21 +199,161 @@ public sealed class BackupService(
                 logger.LogInformation("Pruned old backup {BackupId}", id);
             }
 
-            List<string> leftovers = storage
-                .EnumerateFileSystemEntries(
-                    options.SetsRoot,
-                    BackupSetId.IncompletePrefix + "*",
-                    SearchOption.TopDirectoryOnly
-                )
-                .Where(storage.DirectoryExists)
-                .ToList();
-            foreach (string leftover in leftovers)
-                storage.DeleteDirectory(leftover, recursive: true);
+            ClearHalfBuiltSets();
+            await PruneSupersededCopiesAsync(cancellationToken);
         }
         catch (Exception exception)
         {
             logger.LogWarning("Backup pruning failed: {Reason}", exception.Message);
         }
+    }
+
+    /// <summary>
+    /// Writes a set, after first giving back what the backups folder holds for
+    /// nothing and checking that the set fits. A disk that fills up half way
+    /// through a copy takes the running server's own databases down with it.
+    /// </summary>
+    private async Task<BackupManifest> WriteSetAsync(
+        string reason,
+        bool keepDamagedCopies,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            if (storage.DirectoryExists(options.SetsRoot))
+            {
+                ClearHalfBuiltSets();
+                await PruneSupersededCopiesAsync(cancellationToken);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning("Making room for a backup failed: {Reason}", exception.Message);
+        }
+
+        RequireRoomForASet();
+
+        return await writer.WriteAsync(
+            reason,
+            options.Databases,
+            options.ConfigRoot,
+            keepDamagedCopies,
+            cancellationToken
+        );
+    }
+
+    /// <summary>
+    /// Refuses to start a set that cannot fit, with the two numbers that say
+    /// why. Goes on when the free space cannot be told.
+    /// </summary>
+    private void RequireRoomForASet()
+    {
+        if (volumes?.FreeBytesAt(options.BackupRoot) is not { } free)
+            return;
+
+        long needed = options.Databases.Sum(database =>
+            SizeOrZero(database.LivePath) + SizeOrZero(database.LivePath + "-wal")
+        );
+        if (free >= needed)
+            return;
+
+        logger.LogWarning(
+            "No backup was made: the databases take {NeededBytes} bytes and only {FreeBytes} "
+                + "bytes are free at {BackupRoot}. Free up disk space; the next backup tries again.",
+            needed,
+            free,
+            options.BackupRoot
+        );
+        throw new IOException(
+            $"Not enough free disk space for a backup: the databases take {needed} bytes and "
+                + $"{free} bytes are free at {options.BackupRoot}. Nothing was written."
+        );
+    }
+
+    private long SizeOrZero(string path) =>
+        storage.FileExists(path) ? storage.GetFileSize(path) : 0;
+
+    /// <summary>Removes every folder a backup that failed or was cut short left half built.</summary>
+    private void ClearHalfBuiltSets()
+    {
+        List<string> leftovers = storage
+            .EnumerateFileSystemEntries(
+                options.SetsRoot,
+                BackupSetId.IncompletePrefix + "*",
+                SearchOption.TopDirectoryOnly
+            )
+            .Where(storage.DirectoryExists)
+            .ToList();
+        foreach (string leftover in leftovers)
+            storage.DeleteDirectory(leftover, recursive: true);
+    }
+
+    /// <summary>
+    /// Removes the copies of one database at the top of the backups folder
+    /// that every kept good set is newer than.
+    /// <para>
+    /// Such a copy is made before a migration, and the daily backup made them
+    /// too before it became a set. Before a migration only the newest
+    /// <see cref="BackupOptions.RetainCount"/> are kept, but that runs when a
+    /// migration is pending, which can be months apart: a server updated
+    /// across the change kept five copies of every database for good. A copy
+    /// that is older than every set the server keeps protects nothing a set
+    /// does not, so it goes. One made since the oldest kept set stays: it can
+    /// be the last state from before an update.
+    /// </para>
+    /// </summary>
+    private async Task PruneSupersededCopiesAsync(CancellationToken cancellationToken)
+    {
+        if (!storage.DirectoryExists(options.SetsRoot))
+            return;
+
+        List<string> goodSets = [];
+        foreach (string id in ListSetIds())
+        {
+            if (goodSets.Count == Math.Max(options.RetainCount, 1))
+                break;
+
+            BackupManifest? manifest = await ReadManifestAsync(id, cancellationToken);
+            if (manifest is not null && !manifest.Databases.Any(database => database.Damaged))
+                goodSets.Add(id);
+        }
+
+        if (goodSets.Count == 0)
+            return;
+
+        string oldestKept = DatabaseCopyName.StampOfSet(goodSets[^1]);
+        HashSet<string> databases = options
+            .Databases.Select(database => Path.GetFileNameWithoutExtension(database.LivePath))
+            .ToHashSet(StringComparer.Ordinal);
+
+        int removed = 0;
+        long bytes = 0;
+        List<string> files = storage
+            .EnumerateFileSystemEntries(options.BackupRoot, "*", SearchOption.TopDirectoryOnly)
+            .Where(storage.FileExists)
+            .ToList();
+        foreach (string file in files)
+        {
+            if (
+                !DatabaseCopyName.TryParse(Path.GetFileName(file), out string name, out string at)
+                || !databases.Contains(name)
+                || string.CompareOrdinal(at, oldestKept) >= 0
+            )
+                continue;
+
+            bytes += storage.GetFileSize(file);
+            storage.DeleteFile(file);
+            removed++;
+        }
+
+        if (removed > 0)
+            logger.LogInformation(
+                "Removed {Count} old single-database copies ({Bytes} bytes): every backup set "
+                    + "that is kept is newer than they are",
+                removed,
+                bytes
+            );
     }
 
     private async Task<bool> HasDamagedDatabaseAsync(

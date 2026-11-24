@@ -11,17 +11,14 @@
 
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using NoMercy.Data.Music;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
-using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Data.Plugins;
 
 /// <summary>
-/// Music and its analysis, translated for plugins.
+/// Music, translated for plugins.
 /// <para>
 /// The same contract that keeps <see cref="PluginLibraryQuery" /> honest: every
 /// method projects into a record owned by the plugin abstractions, so a
@@ -29,10 +26,7 @@ namespace NoMercy.Data.Plugins;
 /// <c>AsNoTracking</c>.
 /// </para>
 /// </summary>
-public class PluginMusicQuery(
-    IDbContextFactory<MediaContext> contextFactory,
-    ILogger<PluginMusicQuery> logger
-) : IPluginMusicQuery
+public class PluginMusicQuery(IDbContextFactory<MediaContext> contextFactory) : IPluginMusicQuery
 {
     /// <summary>
     /// The most tracks one call will return, whatever the caller asked for. A
@@ -61,6 +55,7 @@ public class PluginMusicQuery(
         }
 
         return await ReadTracksAsync(
+            context,
             libraryTracks
                 // Ordered because a page without one is a page that can repeat
                 // or skip rows between calls.
@@ -86,6 +81,7 @@ public class PluginMusicQuery(
         Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
 
         return await ReadTracksAsync(
+            context,
             context
                 .LibraryTrack.AsNoTracking()
                 .Playable()
@@ -103,6 +99,7 @@ public class PluginMusicQuery(
     /// is the track a page of the library shows, field for field.
     /// </summary>
     private static async Task<IReadOnlyList<PluginTrack>> ReadTracksAsync(
+        MediaContext context,
         IQueryable<LibraryTrack> libraryTracks,
         CancellationToken ct
     )
@@ -120,299 +117,159 @@ public class PluginMusicQuery(
                 libraryTrack.Track.TrackNumber,
                 libraryTrack.Track.DiscNumber,
                 libraryTrack.Track.Duration,
-                libraryTrack.LibraryId.ToString()
+                libraryTrack.LibraryId.ToString(),
+                libraryTrack.Track.Date
             ))
             .ToListAsync(ct);
 
-        return rows.Select(row => new PluginTrack(
-                row.Id,
-                row.Title,
-                row.Album,
-                row.Artist,
-                row.TrackNumber,
-                row.DiscNumber,
-                ParseDurationSeconds(row.Duration),
-                row.LibraryId
-            ))
-            .ToList();
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        TrackDetails details = await ReadDetailsAsync(
+            context,
+            rows.Select(row => row.Id).Distinct().ToArray(),
+            ct
+        );
+
+        return rows.Select(row => WithDetails(row, details)).ToList();
     }
 
-    public async Task<IReadOnlyList<PluginTrackAudioAnalysis>> GetAnalysisAsync(
-        IReadOnlyList<Guid> trackIds,
-        CancellationToken ct = default
-    )
+    private static PluginTrack WithDetails(TrackRow row, TrackDetails details)
     {
-        if (trackIds.Count == 0)
+        List<AlbumLink> albums = NamedFirst(details.Albums[row.Id], row.Album, album => album.Name);
+        List<ArtistLink> artists = NamedFirst(
+            details.Artists[row.Id],
+            row.Artist,
+            artist => artist.Name
+        );
+
+        return new(
+            row.Id,
+            row.Title,
+            row.Album,
+            row.Artist,
+            row.TrackNumber,
+            row.DiscNumber,
+            ParseDurationSeconds(row.Duration),
+            row.LibraryId
+        )
         {
-            return [];
-        }
-
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
-
-        return await context
-            .TrackAudioAnalysis.AsNoTracking()
-            // Only rows that actually measured something. A failed or pending
-            // row is an absence to the caller, not a set of null readings.
-            .Where(analysis =>
-                ids.Contains(analysis.TrackId) && analysis.State == AudioAnalysisState.Ok
-            )
-            .Select(analysis => new PluginTrackAudioAnalysis(
-                analysis.TrackId,
-                analysis.Bpm,
-                analysis.BpmConfidence,
-                analysis.BeatOffsetMs,
-                analysis.BeatIntervalMs,
-                analysis.KeyName,
-                analysis.KeyCamelot,
-                analysis.KeyConfidence,
-                analysis.IntegratedLufs,
-                analysis.TruePeakDb,
-                analysis.LoudnessRange,
-                analysis.Energy,
-                analysis.SpectralCentroid,
-                analysis.IntroEndMs,
-                analysis.OutroStartMs,
-                analysis.AnalyzerVersion
-            ))
-            .ToListAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<PluginTrackDjAnalysis>> GetDjAnalysisAsync(
-        IReadOnlyList<Guid> trackIds,
-        CancellationToken ct = default
-    )
-    {
-        if (trackIds.Count == 0)
-        {
-            return [];
-        }
-
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
-
-        List<DjAnalysisRow> rows = await context
-            .TrackDjAnalysis.AsNoTracking()
-            .Where(dj => ids.Contains(dj.TrackId) && dj.State == AudioAnalysisState.Ok)
-            .Select(dj => new DjAnalysisRow(
-                dj.TrackId,
-                dj.DjAnalyzerVersion,
-                dj.BaseAnalyzerVersion,
-                dj.DownbeatIndex,
-                dj.BeatsPerBar,
-                dj.PhraseLengthBars,
-                dj.PhraseStartsMs,
-                dj.VocalRegionsMs,
-                dj.BarEnergy,
-                dj.CuePoints,
-                dj.Chords
-            ))
-            .ToListAsync(ct);
-
-        return rows.Select(row => new PluginTrackDjAnalysis(
-                row.TrackId,
-                row.DjAnalyzerVersion,
-                row.BaseAnalyzerVersion,
-                row.DownbeatIndex,
-                row.BeatsPerBar,
-                row.PhraseLengthBars,
-                DeserializeJsonList<int>(row.PhraseStartsMs, row.TrackId, "phrase_starts_ms"),
-                DeserializeJsonList<int[]>(row.VocalRegionsMs, row.TrackId, "vocal_regions_ms"),
-                DeserializeJsonList<double>(row.BarEnergy, row.TrackId, "bar_energy"),
-                DeserializeJsonList<CuePointRow>(row.CuePoints, row.TrackId, "cue_points")
-                    .Select(cue => new PluginCuePoint(
-                        cue.Ms,
-                        cue.Type ?? string.Empty,
-                        cue.Direction ?? string.Empty,
-                        cue.Score
-                    ))
-                    .ToList(),
-                DeserializeJsonList<ChordRow>(row.Chords, row.TrackId, "chords")
-                    .Select(chord => new PluginChord(chord.Ms, chord.Chord ?? string.Empty))
-                    .ToList()
-            ))
-            .ToList();
-    }
-
-    public async Task<IReadOnlyList<PluginTrackStem>> GetStemsAsync(
-        IReadOnlyList<Guid> trackIds,
-        CancellationToken ct = default
-    )
-    {
-        if (trackIds.Count == 0)
-        {
-            return [];
-        }
-
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
-
-        List<StemRow> rows = await context
-            .TrackStems.AsNoTracking()
-            .Where(stem => ids.Contains(stem.TrackId))
-            .Select(stem => new StemRow(
-                stem.TrackId,
-                stem.Kind,
-                stem.Coverage,
-                stem.WindowStartMs,
-                stem.WindowEndMs,
-                stem.Format,
-                stem.SampleRate,
-                stem.StorageKey,
-                stem.ProducerVersion,
-                stem.Engine
-            ))
-            .ToListAsync(ct);
-
-        return rows.Select(row => new PluginTrackStem(
-                row.TrackId,
-                row.Kind,
-                StemCoverageMap.ToPlugin(row.Coverage),
-                row.WindowStartMs,
-                row.WindowEndMs,
-                row.Format,
-                row.SampleRate,
-                row.StorageKey,
-                row.ProducerVersion
-            )
-            {
-                Engine = row.Engine,
-            })
-            .ToList();
-    }
-
-    public async Task<IReadOnlyList<Guid>> GetTracksNeedingDjAnalysisAsync(
-        string libraryId,
-        int djAnalyzerVersion,
-        int skip = 0,
-        int take = 500,
-        CancellationToken ct = default
-    )
-    {
-        if (!Ulid.TryParse(libraryId, out Ulid parsedLibraryId))
-        {
-            return [];
-        }
-
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        return await DjAnalysisQueries
-            .TracksNeedingDjAnalysis(context, parsedLibraryId, djAnalyzerVersion)
-            .Skip(Math.Max(0, skip))
-            .Take(Math.Clamp(take, 1, MaxPageSize))
-            .ToListAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<Guid>> GetTracksMissingStemsAsync(
-        string libraryId,
-        string producerVersion,
-        PluginStemPolicy policy,
-        int skip = 0,
-        int take = 500,
-        CancellationToken ct = default
-    )
-    {
-        // Nothing to sweep for: a plugin under this policy splits the first
-        // time a track is asked for, so there is no worklist to compute.
-        if (policy == PluginStemPolicy.OnDemand)
-        {
-            return [];
-        }
-
-        if (!Ulid.TryParse(libraryId, out Ulid parsedLibraryId))
-        {
-            return [];
-        }
-
-        StemCoverage[] required =
-            policy == PluginStemPolicy.Full
-                ? [StemCoverage.Full]
-                : [StemCoverage.MixIn, StemCoverage.MixOut];
-
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        return await DjAnalysisQueries
-            .TracksMissingStems(context, parsedLibraryId, producerVersion, required)
-            .Skip(Math.Max(0, skip))
-            .Take(Math.Clamp(take, 1, MaxPageSize))
-            .ToListAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<PluginTrackDjFailure>> GetFailedDjAnalysisAsync(
-        string libraryId,
-        int djAnalyzerVersion,
-        int skip = 0,
-        int take = 500,
-        CancellationToken ct = default
-    )
-    {
-        if (!Ulid.TryParse(libraryId, out Ulid parsedLibraryId))
-        {
-            return [];
-        }
-
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        List<DjFailureRow> rows = await DjAnalysisQueries
-            .FailedDjAnalysis(context, parsedLibraryId, djAnalyzerVersion)
-            .Skip(Math.Max(0, skip))
-            .Take(Math.Clamp(take, 1, MaxPageSize))
-            .Select(dj => new DjFailureRow(
-                dj.TrackId,
-                dj.BaseAnalyzerVersion,
-                dj.FailureReason,
-                dj.AnalyzedAt
-            ))
-            .ToListAsync(ct);
-
-        return rows.Select(row => new PluginTrackDjFailure(
-                row.TrackId,
-                row.BaseAnalyzerVersion,
-                row.FailureReason ?? string.Empty,
-                // MarkFailedAsync stamps UtcNow; SQLite hands the value back with no kind.
-                new DateTimeOffset(DateTime.SpecifyKind(row.AnalyzedAt, DateTimeKind.Utc))
-            ))
-            .ToList();
+            Genres = GenresOf(row.Id, albums, details),
+            Year = YearOf(row.Date, albums),
+            AlbumId = albums.Count > 0 ? albums[0].AlbumId : null,
+            Albums = [.. albums.Select(album => new PluginTrackAlbum(album.AlbumId, album.Name))],
+            Artists =
+            [
+                .. artists.Select(artist => new PluginTrackArtist(artist.ArtistId, artist.Name)),
+            ],
+        };
     }
 
     /// <summary>
-    /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns
-    /// via <see cref="DjAnalysisJson.TryDeserialize{T}(string?, out Exception?)" />.
-    /// A missing or malformed column is never this method's caller's problem
-    /// to throw over — it logs what it found (the parse exception too, when
-    /// there was one) and hands back an empty list, so one bad row never
-    /// takes a whole page of plugin results down with it.
+    /// The albums, artists and genres of a page of tracks: one flat query per
+    /// link table, put together in memory. SQLite cannot nest them inside the
+    /// page's own projection.
     /// </summary>
-    private List<T> DeserializeJsonList<T>(string? json, Guid trackId, string column)
+    private static async Task<TrackDetails> ReadDetailsAsync(
+        MediaContext context,
+        Guid[] trackIds,
+        CancellationToken ct
+    )
     {
-        List<T>? result = DjAnalysisJson.TryDeserialize<T>(json, out Exception? error);
-        if (result is not null)
+        List<AlbumLink> albums = await context
+            .AlbumTrack.AsNoTracking()
+            .Where(link => trackIds.Contains(link.TrackId))
+            .Select(link => new AlbumLink(
+                link.TrackId,
+                link.AlbumId,
+                link.Album.Name,
+                link.Album.Year
+            ))
+            .ToListAsync(ct);
+
+        List<ArtistLink> artists = await context
+            .ArtistTrack.AsNoTracking()
+            .Where(link => trackIds.Contains(link.TrackId))
+            .Select(link => new ArtistLink(link.TrackId, link.ArtistId, link.Artist.Name))
+            .ToListAsync(ct);
+
+        List<GenreLink> trackGenres = await context
+            .MusicGenreTrack.AsNoTracking()
+            .Where(link => trackIds.Contains(link.TrackId))
+            .Select(link => new GenreLink(link.TrackId, link.Genre.Name))
+            .ToListAsync(ct);
+
+        Guid[] albumIds = albums.Select(album => album.AlbumId).Distinct().ToArray();
+        List<GenreLink> albumGenres = await context
+            .AlbumMusicGenre.AsNoTracking()
+            .Where(link => albumIds.Contains(link.AlbumId))
+            .Select(link => new GenreLink(link.AlbumId, link.MusicGenre.Name))
+            .ToListAsync(ct);
+
+        return new(
+            albums.ToLookup(album => album.TrackId),
+            artists.ToLookup(artist => artist.TrackId),
+            trackGenres.ToLookup(genre => genre.OwnerId, genre => genre.Name),
+            albumGenres.ToLookup(genre => genre.OwnerId, genre => genre.Name)
+        );
+    }
+
+    /// <summary>
+    /// By name, with the entry the single-name member already shows moved to
+    /// the front, so the list and that member never disagree about which one
+    /// comes first.
+    /// </summary>
+    private static List<T> NamedFirst<T>(
+        IEnumerable<T> entries,
+        string? shown,
+        Func<T, string> name
+    )
+    {
+        List<T> ordered = entries.OrderBy(name, StringComparer.OrdinalIgnoreCase).ToList();
+        int first = shown is null
+            ? -1
+            : ordered.FindIndex(entry =>
+                string.Equals(name(entry), shown, StringComparison.Ordinal)
+            );
+
+        if (first > 0)
         {
-            return result;
+            T entry = ordered[first];
+            ordered.RemoveAt(first);
+            ordered.Insert(0, entry);
         }
 
-        if (error is null)
+        return ordered;
+    }
+
+    /// <summary>The track's own genres; where it has none, those of its albums.</summary>
+    private static List<string> GenresOf(Guid trackId, List<AlbumLink> albums, TrackDetails details)
+    {
+        IEnumerable<string> names = details.TrackGenres[trackId];
+
+        if (!names.Any())
         {
-            logger.LogWarning(
-                "Track {TrackId}: {Column} column is empty on an Ok DJ analysis row; treating it as an empty list",
-                trackId,
-                column
-            );
-        }
-        else
-        {
-            logger.LogWarning(
-                error,
-                "Track {TrackId}: malformed {Column} JSON on a DJ analysis row; treating it as an empty list",
-                trackId,
-                column
-            );
+            names = albums.SelectMany(album => details.AlbumGenres[album.AlbumId]);
         }
 
-        return [];
+        return names
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>The track's own release year, or else that of the album shown for it.</summary>
+    private static int? YearOf(DateTime? released, List<AlbumLink> albums)
+    {
+        if (released is { Year: > 1 } date)
+        {
+            return date.Year;
+        }
+
+        return albums.Count > 0 && albums[0].Year > 0 ? albums[0].Year : null;
     }
 
     /// <summary>
@@ -420,13 +277,8 @@ public class PluginMusicQuery(
     /// "00:" stripped, so a track under an hour reads "mm:ss". Parsed by hand:
     /// <see cref="TimeSpan.TryParse(string?, out TimeSpan)" /> takes two parts
     /// as hours and minutes and would make a 3:45 track last all afternoon.
-    /// <para>
-    /// <c>internal</c> rather than private: the one duration parser in the
-    /// repo, so <see cref="PluginMusicAnalysisWriter" /> reuses it for its
-    /// track-duration bound checks instead of copying it.
-    /// </para>
     /// </summary>
-    internal static double? ParseDurationSeconds(string? duration)
+    private static double? ParseDurationSeconds(string? duration)
     {
         if (string.IsNullOrWhiteSpace(duration))
         {
@@ -473,52 +325,22 @@ public class PluginMusicQuery(
         int? TrackNumber,
         int? DiscNumber,
         string? Duration,
-        string LibraryId
+        string LibraryId,
+        DateTime? Date
     );
 
-    /// <summary>
-    /// One DJ analysis row before its JSON columns are parsed into the typed
-    /// lists <see cref="PluginTrackDjAnalysis" /> carries.
-    /// </summary>
-    private sealed record DjAnalysisRow(
-        Guid TrackId,
-        int DjAnalyzerVersion,
-        int BaseAnalyzerVersion,
-        int? DownbeatIndex,
-        int BeatsPerBar,
-        int PhraseLengthBars,
-        string? PhraseStartsMs,
-        string? VocalRegionsMs,
-        string? BarEnergy,
-        string? CuePoints,
-        string? Chords
-    );
+    private sealed record AlbumLink(Guid TrackId, Guid AlbumId, string Name, int Year);
 
-    /// <summary>
-    /// One failed DJ row before its reason and stamp are shaped into
-    /// <see cref="PluginTrackDjFailure" />.
-    /// </summary>
-    private sealed record DjFailureRow(
-        Guid TrackId,
-        int BaseAnalyzerVersion,
-        string? FailureReason,
-        DateTime AnalyzedAt
-    );
+    private sealed record ArtistLink(Guid TrackId, Guid ArtistId, string Name);
 
-    /// <summary>
-    /// One stem row before <see cref="StemCoverage" /> is mapped to
-    /// <see cref="PluginStemCoverage" />.
-    /// </summary>
-    private sealed record StemRow(
-        Guid TrackId,
-        string Kind,
-        StemCoverage Coverage,
-        int? WindowStartMs,
-        int? WindowEndMs,
-        string Format,
-        int SampleRate,
-        string StorageKey,
-        string ProducerVersion,
-        string? Engine
+    /// <param name="OwnerId">The track or the album the genre belongs to.</param>
+    private sealed record GenreLink(Guid OwnerId, string Name);
+
+    /// <summary>What a page of tracks is on, by and of, keyed by track or by album.</summary>
+    private sealed record TrackDetails(
+        ILookup<Guid, AlbumLink> Albums,
+        ILookup<Guid, ArtistLink> Artists,
+        ILookup<Guid, string> TrackGenres,
+        ILookup<Guid, string> AlbumGenres
     );
 }

@@ -71,6 +71,39 @@ public sealed class DeviceListComposerTests
         Assert.True(item.IsRegisteredClient);
     }
 
+    // Without mDNS the phone got no address for a TV whose Cast name differs from its row name.
+    [Fact]
+    public void Compose_RowWithoutMdnsLanIp_ListsTheLanAddressItConnectedFrom()
+    {
+        Device tv = Registered(lanIp: null!);
+        tv.Ip = "192.168.2.80";
+
+        List<DeviceListItem> result = DeviceListComposer.Compose(
+            [tv],
+            _ => true,
+            _ => (true, true),
+            Registry().Object
+        );
+
+        Assert.Equal("192.168.2.80", Assert.Single(result).LanIp);
+    }
+
+    [Fact]
+    public void Compose_RowSeenOnlyFromAPublicAddress_ListsNoLanAddress()
+    {
+        Device tv = Registered(lanIp: null!);
+        tv.Ip = "203.0.113.49";
+
+        List<DeviceListItem> result = DeviceListComposer.Compose(
+            [tv],
+            _ => true,
+            _ => (true, true),
+            Registry().Object
+        );
+
+        Assert.Null(Assert.Single(result).LanIp);
+    }
+
     [Fact]
     public void Compose_CastHitMatchingRegisteredLanIp_IsNotDuplicated()
     {

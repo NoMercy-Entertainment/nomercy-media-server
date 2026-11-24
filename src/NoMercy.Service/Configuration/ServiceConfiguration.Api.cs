@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.SignalR;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using NoMercy.Api.Constraints;
+using NoMercy.Api.Filters;
 using NoMercy.Api.Hubs.Filters;
 using NoMercy.Api.Middleware;
 using NoMercy.NmSystem.Information;
@@ -60,6 +61,10 @@ public static partial class ServiceConfiguration
         // pushes never leak across accounts.
         services.AddSingleton<IUserIdProvider, Api.Hubs.NoMercyUserIdProvider>();
         services.AddSingleton<IServedFolderRegistry, ServedFolderRegistry>();
+        services.AddSingleton(_ =>
+            NmSystem.Logging.SessionLogPolicy.FromEnvironment(Environment.GetEnvironmentVariable)
+        );
+        services.AddScoped<SessionRequestHttpLogFilter>();
         services.AddSingleton<PlaybackFileCache>();
 
         services
@@ -72,6 +77,7 @@ public static partial class ServiceConfiguration
                 o.KeepAliveInterval = TimeSpan.FromSeconds(15);
 
                 // Add error logging filter for invalid method calls and wrong arguments
+                o.AddFilter<SessionRequestLogFilter>();
                 o.AddFilter<HubErrorLoggingFilter>();
                 o.AddFilter<HubCommandResultFilter>();
             })

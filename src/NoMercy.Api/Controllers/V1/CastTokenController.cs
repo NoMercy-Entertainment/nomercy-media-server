@@ -29,6 +29,7 @@ namespace NoMercy.Api.Controllers.V1;
 [ApiController]
 [ApiVersion(1.0)]
 [Authorize]
+[ServiceFilter(typeof(NoMercy.Api.Filters.SessionRequestHttpLogFilter))]
 [Route("api/v{version:apiVersion}/cast")]
 public class CastTokenController(
     IDeviceRepository deviceRepository,

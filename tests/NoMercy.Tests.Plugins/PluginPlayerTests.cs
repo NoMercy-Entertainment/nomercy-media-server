@@ -219,6 +219,12 @@ public class PluginPlayerTests
             string method,
             Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
         ) => Registered.Add(method);
+
+        public void HandleWithAccess(
+            string method,
+            PluginRouteAccess access,
+            Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+        ) => Registered.Add(method);
     }
 
     private sealed class FakeGrants(string? kind, string? value) : IPluginGrants

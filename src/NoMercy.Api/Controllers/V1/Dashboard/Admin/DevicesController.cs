@@ -27,6 +27,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Tags("Dashboard Server Devices")]
 [ApiVersion(1.0)]
 [Authorize(Policy = "Moderator")]
+[ServiceFilter(typeof(NoMercy.Api.Filters.SessionRequestHttpLogFilter))]
 [Route("api/v{version:apiVersion}/dashboard/devices", Order = 10)]
 public class DevicesController(
     IDeviceRepository deviceRepository,
@@ -37,7 +38,7 @@ public class DevicesController(
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        List<Device> devices = await deviceRepository.GetDevices();
+        List<Device> devices = await deviceRepository.GetListedDevices();
 
         DevicesDto[] devicesDtos =
         [
