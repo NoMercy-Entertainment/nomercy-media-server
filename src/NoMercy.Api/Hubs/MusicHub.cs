@@ -206,6 +206,10 @@ public partial class MusicHub : ConnectionHub
 
         await base.OnDisconnectedAsync(exception);
 
+        // A device picked with nothing playing lives only in the registry; it must not outlive it.
+        if (client is not null && !wasCurrentDevice && !HasOtherMusicConnection(client.DeviceId))
+            _activeDeviceRegistry.RemoveIfMatches(user.Id, client.DeviceId);
+
         // A command can create its per-user lock without ever creating player
         // state. Release it when the last music connection leaves either way.
         if (ConnectedClients.ConnectionsFor(user.Id, "musicHub").Count == 0)
@@ -317,6 +321,13 @@ public partial class MusicHub : ConnectionHub
 
         _logger.LogDebug("Music client disconnected");
     }
+
+    private bool HasOtherMusicConnection(string deviceId) =>
+        ConnectedClients.Clients.Any(kvp =>
+            kvp.Key != Context.ConnectionId
+            && kvp.Value.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+            && kvp.Value.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase)
+        );
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 

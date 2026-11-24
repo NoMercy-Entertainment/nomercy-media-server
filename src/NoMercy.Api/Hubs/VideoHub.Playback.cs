@@ -66,9 +66,11 @@ public partial class VideoHub
         if (user is null)
             return;
 
-        // The player that is rendering the video owns the clock; this report is the
-        // only thing that moves the session forward.
-        if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
+        // Only the active device owns the clock; a passive device's report never moves it.
+        if (
+            _videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState)
+            && ReportsFromActiveDevice(playerState)
+        )
             await _videoPlaybackService.ApplyClientProgress(user, playerState, request.Time * 1000);
 
         await _userDataRepository.UpsertWatchProgressAsync(
@@ -85,6 +87,13 @@ public partial class VideoHub
             )
         );
     }
+
+    private bool ReportsFromActiveDevice(VideoPlayerState state) =>
+        state.DeviceId is null
+        || (
+            ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? caller)
+            && caller.DeviceId.Equals(state.DeviceId, StringComparison.OrdinalIgnoreCase)
+        );
 
     public async Task<HubCommandResult> RemoveWatched(VideoProgressRequest request)
     {
@@ -295,7 +304,14 @@ public partial class VideoHub
             || playerState.CurrentItem is null
             || playerState.Playlist.Count == 0
         )
-            await HandleNewPlayerState(user, type, listId, item, playlist);
+            await HandleNewPlayerState(
+                user,
+                type,
+                listId,
+                item,
+                playlist,
+                ReachableActiveDevice(user, playerState)
+            );
         else if (IsCurrentPlaylist(playerState, type, listId, item.Id))
             await HandleExistingPlaylistState(user, playerState);
         else
@@ -307,7 +323,8 @@ public partial class VideoHub
         string type,
         dynamic listId,
         VideoPlaylistResponseDto item,
-        List<VideoPlaylistResponseDto> playlist
+        List<VideoPlaylistResponseDto> playlist,
+        Client? activeDevice
     )
     {
         Device device = GetCallingDevice();
@@ -324,6 +341,13 @@ public partial class VideoHub
             type,
             listId
         );
+
+        if (activeDevice is not null)
+        {
+            videoPlayerState.DeviceId = activeDevice.DeviceId;
+            videoPlayerState.VolumePercentage =
+                activeDevice.VolumePercent ?? Device.DefaultVolumePercent;
+        }
 
         _videoPlayerStateManager.UpdateState(user.Id, videoPlayerState);
         await _videoPlaybackService.UpdatePlaybackState(user, videoPlayerState);
@@ -362,8 +386,6 @@ public partial class VideoHub
     private async Task HandleExistingPlaylistState(User user, VideoPlayerState state)
     {
         state.PlayState = true;
-
-        state.Time = state.CurrentItem?.Progress?.Time * 1000 ?? 0;
 
         state.Actions.Disallows.Resuming = state.PlayState;
         state.Actions.Disallows.Pausing = !state.PlayState;
@@ -415,8 +437,25 @@ public partial class VideoHub
     {
         if (!ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? device))
             return;
+        if (ReachableActiveDevice(Context.User.UserId(), state) is not null)
+            return;
         state.DeviceId = device.DeviceId;
         state.VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent;
+    }
+
+    private Client? ReachableActiveDevice(User user, VideoPlayerState? state) =>
+        ReachableActiveDevice(user.Id, state);
+
+    private Client? ReachableActiveDevice(Guid userId, VideoPlayerState? state)
+    {
+        if (state?.DeviceId is null)
+            return null;
+        return ConnectedClients
+            .ConnectionsFor(userId, "videoHub")
+            .Select(connection => connection.Value)
+            .FirstOrDefault(client =>
+                client.DeviceId.Equals(state.DeviceId, StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     private void UpdatePlaylistInfo(
@@ -684,7 +723,16 @@ public partial class VideoHub
                 deviceId,
                 UserLogText.Of(user)
             );
-            await _videoPlaybackService.UpdatePlaybackState(user, playerState);
+            VideoPlayerState claimed = VideoPlayerStateFactory.CreateClaimed(
+                deviceId,
+                connectedDevices
+                    .FirstOrDefault(d =>
+                        d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+                    )
+                    ?.VolumePercent ?? Device.DefaultVolumePercent
+            );
+            _videoPlayerStateManager.UpdateState(user.Id, claimed);
+            await _videoPlaybackService.UpdatePlaybackState(user, claimed);
             return HubCommandResult.NoPlaybackMoved();
         }
 

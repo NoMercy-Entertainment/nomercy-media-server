@@ -145,7 +145,18 @@ public partial class VideoHub : ConnectionHub
 
         if (ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? client))
             if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? state))
-                if (state.DeviceId == client.DeviceId)
+                if (
+                    state.DeviceId == client.DeviceId
+                    && !ConnectedClients.Clients.Any(other =>
+                        other.Key != Context.ConnectionId
+                        && other.Value.Sub.Equals(user.Id)
+                        && other.Value.Endpoint == "/videoHub"
+                        && other.Value.DeviceId.Equals(
+                            client.DeviceId,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                )
                 {
                     stopPlayback = true;
                     stoppedDeviceId = client.Id;
@@ -161,24 +172,12 @@ public partial class VideoHub : ConnectionHub
 
             if (connectedDevices.Count == 0)
             {
-                playerState.DeviceId = null;
-                playerState.PlayState = false;
-                playerState.Actions = new()
-                {
-                    Disallows = new()
-                    {
-                        Previous = true,
-                        Next = true,
-                        Resuming = true,
-                        Pausing = true,
-                        Muting = true,
-                        Seeking = true,
-                        Stopping = true,
-                    },
-                };
+                _videoPlayerStateManager.RemoveState(user.Id);
+                playerState = null;
             }
             else if (stopPlayback)
             {
+                playerState.DeviceId = null;
                 playerState.PlayState = false;
                 playerState.Actions = new()
                 {
@@ -206,7 +205,7 @@ public partial class VideoHub : ConnectionHub
         if (ConnectedClients.ConnectionsFor(user.Id, "videoHub").Count == 0)
             _videoPlaybackService.RemoveDisconnectedUserState(user.Id);
 
-        if (stopPlayback && stoppedDeviceId != Ulid.Empty)
+        if (stopPlayback && stoppedDeviceId != Ulid.Empty && stoppedMediaId != Ulid.Empty)
         {
             try
             {

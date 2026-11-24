@@ -101,6 +101,17 @@ public sealed class ChromeCastLaunchHandoverTests
         Assert.Null(ChromeCastService.FindHandoverTransport(status));
     }
 
+    // A stopped session must not count as "already running": the snapshot predates the stop.
+    [Fact]
+    public void LaunchAlreadyRunning_IsFalseAfterTheOldSessionWasStopped()
+    {
+        ChromecastStatus staleSnapshot = Status(App("925B4C3C", "session-5", "transport-5"));
+
+        Assert.True(ChromeCastService.LaunchAlreadyRunning(staleSnapshot, stoppedOldSession: false));
+        Assert.False(ChromeCastService.LaunchAlreadyRunning(staleSnapshot, stoppedOldSession: true));
+        Assert.False(ChromeCastService.LaunchAlreadyRunning(null, stoppedOldSession: false));
+    }
+
     // Same attribute style as NoMercy.Setup.Cast.LaunchCustomData, which this project does not reference.
     private sealed class SnakeCaseLaunch
     {
