@@ -242,14 +242,17 @@ internal static class LiveFfmpegArgumentBuilder
             args.Add(preset);
         }
 
-        // VBV cap around the ABR target so segment sizes stay predictable for
-        // HLS clients instead of ballooning on complex scenes.
-        int maxrateKbps = (int)Math.Round(quality.BitrateKbps * 1.5);
-        int bufsizeKbps = quality.BitrateKbps * 2;
-        args.Add("-maxrate");
-        args.Add($"{maxrateKbps}k");
-        args.Add("-bufsize");
-        args.Add($"{bufsizeKbps}k");
+        // VBV cap around the ABR target so segment sizes stay predictable for HLS clients.
+        // libsvtav1 refuses a max bitrate outside CRF mode (ffmpeg exits 234), so AV1 keeps the ABR target alone.
+        if (!string.Equals(quality.Encoder, "libsvtav1", StringComparison.OrdinalIgnoreCase))
+        {
+            int maxrateKbps = (int)Math.Round(quality.BitrateKbps * 1.5);
+            int bufsizeKbps = quality.BitrateKbps * 2;
+            args.Add("-maxrate");
+            args.Add($"{maxrateKbps}k");
+            args.Add("-bufsize");
+            args.Add($"{bufsizeKbps}k");
+        }
 
         args.Add("-vf");
         args.Add(BuildVideoFilterChain(input));
