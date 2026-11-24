@@ -270,13 +270,22 @@ public class SetupController(
     [Authorize(Policy = "MediaAccess")]
     public IActionResult Permissions()
     {
+        var permissions = new
+        {
+            owner = AuthPolicy.IsOwner(User),
+            manager = AuthPolicy.IsModerator(User),
+            allowed = AuthPolicy.IsAllowed(User),
+            optical_access = AuthPolicy.IsOpticalAccess(User),
+        };
+        // Android 2026.11.0 and older read {data:{...}}; newer clients read the bare fields.
         return Ok(
             new
             {
-                owner = AuthPolicy.IsOwner(User),
-                manager = AuthPolicy.IsModerator(User),
-                allowed = AuthPolicy.IsAllowed(User),
-                optical_access = AuthPolicy.IsOpticalAccess(User),
+                permissions.owner,
+                permissions.manager,
+                permissions.allowed,
+                permissions.optical_access,
+                data = permissions,
             }
         );
     }

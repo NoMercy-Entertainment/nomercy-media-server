@@ -52,6 +52,29 @@ public class AuthenticationTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task Permissions_AlsoAnswerInsideData_ForReleasedAppsThatReadTheEnvelope()
+    {
+        // Android 2026.11.0 and older read {data:{owner,manager}}; newer apps read the bare object.
+        HttpClient client = _factory.CreateClient().AsAuthenticated();
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/setup/permissions");
+
+        System.Text.Json.JsonElement root = System
+            .Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement;
+        Assert.True(root.TryGetProperty("owner", out _));
+        Assert.True(root.TryGetProperty("data", out System.Text.Json.JsonElement data));
+        Assert.Equal(
+            root.GetProperty("owner").GetBoolean(),
+            data.GetProperty("owner").GetBoolean()
+        );
+        Assert.Equal(
+            root.GetProperty("manager").GetBoolean(),
+            data.GetProperty("manager").GetBoolean()
+        );
+    }
+
+    [Fact]
     public async Task AuthenticatedEndpoint_ReturnsUnauthorized_WhenNotAuthenticated()
     {
         HttpClient client = _factory.CreateClient().AsUnauthenticated();
