@@ -86,7 +86,6 @@ public class LibraryNavigationBuildTests
                 "collections",
                 "specials",
                 "genres",
-                "people",
                 "favorites",
                 "lists",
                 "plugin-video",
