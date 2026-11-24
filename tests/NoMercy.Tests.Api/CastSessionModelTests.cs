@@ -124,6 +124,17 @@ public class CastSessionModelTests(NoMercyApiFactory factory, ITestOutputHelper 
             factory,
             $"{HubName(kind)}?client_id={actor.DeviceId}&client_type=web&client_name={actor.Name}"
         );
+        (await SettleAsync(
+            () =>
+                factory
+                    .GetConnectedClients()
+                    .Clients.Values.Any(c =>
+                        c.DeviceId == actor.DeviceId && c.Endpoint == "/" + HubName(kind)
+                    ),
+            TimeSpan.FromSeconds(5)
+        ))
+            .Should()
+            .BeTrue("the hub registers the client right after the handshake");
         return actor;
     }
 
