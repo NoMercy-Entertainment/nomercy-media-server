@@ -295,7 +295,14 @@ public partial class VideoHub
             || playerState.CurrentItem is null
             || playerState.Playlist.Count == 0
         )
-            await HandleNewPlayerState(user, type, listId, item, playlist);
+            await HandleNewPlayerState(
+                user,
+                type,
+                listId,
+                item,
+                playlist,
+                ReachableActiveDevice(user, playerState)
+            );
         else if (IsCurrentPlaylist(playerState, type, listId, item.Id))
             await HandleExistingPlaylistState(user, playerState);
         else
@@ -307,7 +314,8 @@ public partial class VideoHub
         string type,
         dynamic listId,
         VideoPlaylistResponseDto item,
-        List<VideoPlaylistResponseDto> playlist
+        List<VideoPlaylistResponseDto> playlist,
+        Client? activeDevice
     )
     {
         Device device = GetCallingDevice();
@@ -324,6 +332,13 @@ public partial class VideoHub
             type,
             listId
         );
+
+        if (activeDevice is not null)
+        {
+            videoPlayerState.DeviceId = activeDevice.DeviceId;
+            videoPlayerState.VolumePercentage =
+                activeDevice.VolumePercent ?? Device.DefaultVolumePercent;
+        }
 
         _videoPlayerStateManager.UpdateState(user.Id, videoPlayerState);
         await _videoPlaybackService.UpdatePlaybackState(user, videoPlayerState);
@@ -415,8 +430,25 @@ public partial class VideoHub
     {
         if (!ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? device))
             return;
+        if (ReachableActiveDevice(Context.User.UserId(), state) is not null)
+            return;
         state.DeviceId = device.DeviceId;
         state.VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent;
+    }
+
+    private Client? ReachableActiveDevice(User user, VideoPlayerState? state) =>
+        ReachableActiveDevice(user.Id, state);
+
+    private Client? ReachableActiveDevice(Guid userId, VideoPlayerState? state)
+    {
+        if (state?.DeviceId is null)
+            return null;
+        return ConnectedClients
+            .ConnectionsFor(userId, "videoHub")
+            .Select(connection => connection.Value)
+            .FirstOrDefault(client =>
+                client.DeviceId.Equals(state.DeviceId, StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     private void UpdatePlaylistInfo(
