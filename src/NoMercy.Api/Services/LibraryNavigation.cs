@@ -29,7 +29,6 @@ public static class LibraryNavigation
     [
         Page("specials", "library.base.specials", "sparkles", "/specials", "library"),
         Page("genres", "library.base.genres", "witchHat", "/genres", "library"),
-        Page("people", "library.base.people", "user", "/person", "library"),
         Page("favorites", "library.base.favorites", "heart", "/favorites", "library"),
         Page("lists", "library.base.my_lists", "bulletList", "/lists", "library"),
     ];

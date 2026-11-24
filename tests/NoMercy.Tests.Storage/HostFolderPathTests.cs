@@ -67,6 +67,16 @@ public class HostFolderPathTests
         HostFolderPath.ContainsSecondRoot(@"\\vault-01\music\Nine Vaults").Should().BeFalse();
     }
 
+    // A root ending in a separator joined to a folder starting with one: one folder, kept.
+    [Theory]
+    [InlineData("Q:/Music//N/Nine Vaults/[2022] Remixes")]
+    [InlineData(@"Q:\Music\\N\Nine Vaults")]
+    [InlineData("/mnt/vault/music//N/Nine Vaults")]
+    public void ContainsSecondRoot_LeavesADoubledSeparatorInOneFolderAlone(string hostFolder)
+    {
+        HostFolderPath.ContainsSecondRoot(hostFolder).Should().BeFalse();
+    }
+
     [Fact]
     public void RepairDoubled_ReturnsTheFirstHalfOfADoubledUncFolder()
     {

@@ -33,6 +33,7 @@ using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;
 using NoMercyQueue;
+using Serilog.Events;
 
 namespace NoMercy.Api.Controllers;
 
@@ -225,6 +226,14 @@ public class ManagementController(
     {
         appLifetime.StopApplication();
         return Ok(new { status = "ok", message = "Server is shutting down" });
+    }
+
+    [HttpPost("loglevel")]
+    public async Task<IActionResult> LogLevel([FromQuery] LogEventLevel level)
+    {
+        Logger.SetLogLevel(level);
+        await serverConfiguration.SetValueAsync("logLevel", level.ToString(), null);
+        return Ok(new { status = "ok", message = "Log level set to " + level });
     }
 
     [HttpPost("restart")]

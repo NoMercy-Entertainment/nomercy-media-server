@@ -102,8 +102,26 @@ public class LibraryNavigationTests : IClassFixture<NoMercyApiFactory>
         bool hasVideoLibrary = entries.Any(entry =>
             entry.GetProperty("origin").GetString() == "library"
         );
-        bool offersPeople = entries.Any(entry => entry.GetProperty("id").GetString() == "people");
+        bool offersGenres = entries.Any(entry => entry.GetProperty("id").GetString() == "genres");
 
-        offersPeople.Should().Be(hasVideoLibrary);
+        offersGenres.Should().Be(hasVideoLibrary);
+    }
+
+    // No client has a people list page (web and the app only have /person/{id}); the app crashed on it.
+    [Fact]
+    public async Task NoEntryLinksToThePeopleListNoClientHas()
+    {
+        HttpResponseMessage response = await _authed.GetAsync(Route);
+
+        using JsonDocument document = JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync()
+        );
+
+        document
+            .RootElement.GetProperty("data")
+            .EnumerateArray()
+            .Select(entry => entry.GetProperty("link").GetString())
+            .Should()
+            .NotContain("/person");
     }
 }

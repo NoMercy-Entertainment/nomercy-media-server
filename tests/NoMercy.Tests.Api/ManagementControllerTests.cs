@@ -36,6 +36,18 @@ public class ManagementControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task ManageLogLevel_SetsTheLevel_AndAnswersOk()
+    {
+        HttpResponseMessage response = await _client.PostAsync(
+            "/manage/loglevel?level=Information",
+            null
+        );
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Information", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task ManageStatus_ReturnsOk_WithServerStatus()
     {
         HttpResponseMessage response = await _client.GetAsync("/manage/status");

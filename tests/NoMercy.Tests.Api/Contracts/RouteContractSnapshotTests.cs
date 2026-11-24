@@ -520,6 +520,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST manage/app/start [Management.StartApp]",
         "POST manage/app/stop [Management.StopApp]",
         "POST manage/autostart [Management.SetAutoStart]",
+        "POST manage/loglevel [Management.LogLevel]",
         "POST manage/restart [Management.Restart]",
         "POST manage/stop [Management.Stop]",
         "POST manage/update [Management.DownloadUpdate]",
