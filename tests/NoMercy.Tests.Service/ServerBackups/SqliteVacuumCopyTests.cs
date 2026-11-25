@@ -16,7 +16,7 @@ using NoMercy.Data.ServerBackups;
 namespace NoMercy.Tests.Service.ServerBackups;
 
 [Trait("Category", "Unit")]
-public sealed class SqliteByteCopyTests : IDisposable
+public sealed class SqliteVacuumCopyTests : IDisposable
 {
     private readonly BackupTestFolder _folder = new();
 
@@ -72,7 +72,7 @@ public sealed class SqliteByteCopyTests : IDisposable
     }
 
     [Fact]
-    public void ByteCopy_OfADatabaseWithRowsInItsWal_HoldsEveryRowAndPassesTheIntegrityCheck()
+    public void CopyOnline_OfADatabaseWithRowsInItsWal_HoldsEveryRowAndPassesTheIntegrityCheck()
     {
         string source = _folder.DatabasePath("media");
         string target = Path.Combine(_folder.Root, "copy.db");
@@ -91,13 +91,13 @@ public sealed class SqliteByteCopyTests : IDisposable
             command.CommandText = "PRAGMA integrity_check";
             command.ExecuteScalar().Should().Be("ok");
         }
-        logger.Lines.Should().Contain(line => line.Message.StartsWith("Byte-copied"));
+        logger.Lines.Should().Contain(line => line.Message.StartsWith("Vacuumed"));
         logger.Lines.Should().NotContain(line => line.Level >= LogLevel.Warning);
         File.Exists(target + "-wal").Should().BeFalse();
     }
 
     [Fact]
-    public void WhenAnotherConnectionHoldsAWriteTransaction_FallsBackToTheOnlineBackup()
+    public void WhenAnotherConnectionHoldsAWriteTransaction_TheCopyHoldsOnlyWhatWasCommitted()
     {
         string source = _folder.DatabasePath("media");
         string target = Path.Combine(_folder.Root, "copy.db");
@@ -111,11 +111,6 @@ public sealed class SqliteByteCopyTests : IDisposable
         new SqliteFileOperations(logger).CopyOnline(source, target);
 
         Scalar(target, "SELECT COUNT(*) FROM item").Should().Be(200);
-        logger
-            .Lines.Should()
-            .Contain(line =>
-                line.Level == LogLevel.Warning && line.Message.Contains("online backup")
-            );
-        logger.Lines.Should().NotContain(line => line.Message.StartsWith("Byte-copied"));
+        logger.Lines.Should().NotContain(line => line.Level >= LogLevel.Warning);
     }
 }

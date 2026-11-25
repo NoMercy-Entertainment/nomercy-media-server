@@ -45,6 +45,15 @@ internal static partial class DatabaseCopyName
         return match.Success;
     }
 
+    /// <summary>A hand-made copy beside the live databases, such as <c>media.db.bak-tag-1</c>.</summary>
+    public static bool TryParseHandMade(string? fileName, out string databaseName)
+    {
+        Match match = HandMadePattern().Match(fileName ?? string.Empty);
+        databaseName = match.Groups["database"].Value;
+
+        return match.Success;
+    }
+
     /// <summary>
     /// The time of a set, from its id, in the digits a copy's name carries, so
     /// the two compare as text.
@@ -59,4 +68,11 @@ internal static partial class DatabaseCopyName
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex Pattern();
+
+    [GeneratedRegex(
+        @"\A(?<database>[^.]+)\.db\.bak-.+\z",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex HandMadePattern();
 }

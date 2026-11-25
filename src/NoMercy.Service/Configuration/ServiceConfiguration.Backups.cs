@@ -19,7 +19,10 @@ public static partial class ServiceConfiguration
 {
     private static void ConfigureBackups(IServiceCollection services)
     {
-        services.AddSingleton(_ => BackupOptions.ForAppFiles());
+        services.AddSingleton<BackupSettings>();
+        services.AddSingleton(provider =>
+            BackupOptions.ForAppFiles(provider.GetRequiredService<BackupSettings>().RetainCount)
+        );
         services.AddSingleton<ISqliteFileOperations, SqliteFileOperations>();
         services.AddSingleton<IPreMigrationBackup, PreMigrationBackup>();
         services.AddSingleton<IBackupSetWriter, BackupSetWriter>();

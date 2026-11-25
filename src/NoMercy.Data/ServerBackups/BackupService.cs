@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using NoMercy.Storage;
 
@@ -347,14 +348,38 @@ public sealed class BackupService(
             removed++;
         }
 
+        // Copies made by hand next to the live databases are judged by the time they were written.
+        foreach (string file in HandMadeCopies(databases))
+        {
+            string writtenAt = storage
+                .GetLastWriteTimeUtc(file)
+                .ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+            if (string.CompareOrdinal(writtenAt, oldestKept) >= 0)
+                continue;
+
+            bytes += storage.GetFileSize(file);
+            storage.DeleteFile(file);
+            removed++;
+        }
+
         if (removed > 0)
             logger.LogInformation(
-                "Removed {Count} old single-database copies ({Bytes} bytes): every backup set "
+                "Removed {Count} old database copies ({Bytes} bytes): every backup set "
                     + "that is kept is newer than they are",
                 removed,
                 bytes
             );
     }
+
+    private List<string> HandMadeCopies(HashSet<string> databases) =>
+        storage
+            .EnumerateFileSystemEntries(options.DataRoot, "*", SearchOption.TopDirectoryOnly)
+            .Where(storage.FileExists)
+            .Where(file =>
+                DatabaseCopyName.TryParseHandMade(Path.GetFileName(file), out string name)
+                && databases.Contains(name)
+            )
+            .ToList();
 
     private async Task<bool> HasDamagedDatabaseAsync(
         string id,

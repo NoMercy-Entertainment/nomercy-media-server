@@ -18,15 +18,14 @@ public sealed class SqliteFileOperations(ILogger<SqliteFileOperations>? logger =
     : ISqliteFileOperations
 {
     private const int LockWaitMilliseconds = 3000;
-    private const int CopyBufferBytes = 4 * 1024 * 1024;
 
     public void CopyOnline(string sourcePath, string destinationPath)
     {
-        string? fallbackReason = TryByteCopy(sourcePath, destinationPath);
+        string? fallbackReason = TryVacuumInto(sourcePath, destinationPath);
         if (fallbackReason is not null)
         {
             logger?.LogWarning(
-                "Byte copy of {Database} not possible ({Reason}); using the online backup",
+                "Compact copy of {Database} not possible ({Reason}); using the online backup",
                 Path.GetFileName(sourcePath),
                 fallbackReason
             );
@@ -46,57 +45,26 @@ public sealed class SqliteFileOperations(ILogger<SqliteFileOperations>? logger =
         Seal(destinationPath);
     }
 
-    // Null when copied; otherwise the reason a byte copy was not possible.
-    private string? TryByteCopy(string sourcePath, string destinationPath)
+    // VACUUM INTO writes only the pages in use, from one read snapshot, so writers keep
+    // working. Null when copied; otherwise the reason it was not possible.
+    private string? TryVacuumInto(string sourcePath, string destinationPath)
     {
         try
         {
             using SqliteConnection source = Open(sourcePath, SqliteOpenMode.ReadWrite);
             Execute(source, $"PRAGMA busy_timeout={LockWaitMilliseconds}");
 
-            using (SqliteCommand checkpoint = source.CreateCommand())
-            {
-                checkpoint.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)";
-                using SqliteDataReader reader = checkpoint.ExecuteReader();
-                if (reader.Read() && reader.GetInt64(0) != 0)
-                    return "checkpoint busy";
-            }
+            using SqliteCommand vacuum = source.CreateCommand();
+            vacuum.CommandText = "VACUUM INTO $destination";
+            vacuum.Parameters.AddWithValue("$destination", destinationPath);
+            vacuum.CommandTimeout = 0;
+            vacuum.ExecuteNonQuery();
 
-            Execute(source, "BEGIN IMMEDIATE");
-            try
-            {
-                // A commit between the checkpoint and the lock leaves frames in the WAL,
-                // and another connection may backfill them into the file mid-copy.
-                FileInfo wal = new(sourcePath + "-wal");
-                if (wal.Exists && wal.Length > 0)
-                    return "write-ahead log not empty";
-
-                using FileStream from = new(
-                    sourcePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.ReadWrite,
-                    CopyBufferBytes
-                );
-                using FileStream to = new(
-                    destinationPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    CopyBufferBytes
-                );
-                from.CopyTo(to, CopyBufferBytes);
-                logger?.LogDebug(
-                    "Byte-copied {Database}: {Bytes} bytes",
-                    Path.GetFileName(sourcePath),
-                    to.Length
-                );
-            }
-            finally
-            {
-                Execute(source, "ROLLBACK");
-            }
-
+            logger?.LogDebug(
+                "Vacuumed {Database} into a copy of {Bytes} bytes",
+                Path.GetFileName(sourcePath),
+                new FileInfo(destinationPath).Length
+            );
             return null;
         }
         catch (SqliteException exception)
