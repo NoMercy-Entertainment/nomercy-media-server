@@ -692,7 +692,9 @@ public partial class VideoHub
                             serverUrl: serverUrl,
                             deviceId: targetUlid,
                             intent: intent,
-                            clientLocale: locale
+                            clientLocale: locale,
+                            deviceFingerprint: targetTv.DeviceId,
+                            deviceName: targetTv.CustomName ?? targetTv.Name
                         )
                 )
                 .ContinueWith(

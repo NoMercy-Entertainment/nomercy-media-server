@@ -94,7 +94,9 @@ public class ServerCastWaker(
                     serverUrl: serverUrl,
                     deviceId: deviceId,
                     intent: intent,
-                    clientLocale: locale
+                    clientLocale: locale,
+                    deviceFingerprint: tv.DeviceId,
+                    deviceName: tv.CustomName ?? tv.Name
                 )
         );
 

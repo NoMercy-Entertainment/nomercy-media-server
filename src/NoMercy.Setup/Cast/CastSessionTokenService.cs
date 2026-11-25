@@ -48,7 +48,9 @@ public class CastSessionTokenService
         string serverUrl,
         Ulid deviceId,
         CastIntent intent,
-        string clientLocale = "en-US"
+        string clientLocale = "en-US",
+        string? deviceFingerprint = null,
+        string? deviceName = null
     )
     {
         if (string.IsNullOrWhiteSpace(callerBearer))
@@ -117,6 +119,8 @@ public class CastSessionTokenService
             ServerId = serverId,
             ServerUrl = serverUrl,
             DeviceId = deviceId.ToString(),
+            DeviceFingerprint = deviceFingerprint,
+            DeviceName = deviceName,
             Intent = intent,
             CastSessionId = castSessionId,
             LaunchTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),

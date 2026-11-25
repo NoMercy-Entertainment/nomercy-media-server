@@ -50,6 +50,14 @@ public class LaunchCustomData
     [JsonProperty("device_id")]
     public string DeviceId { get; set; } = null!;
 
+    /// <summary>The Devices row's DeviceId string, the key the hubs use. Absent on older launches.</summary>
+    [JsonProperty("device_fingerprint", NullValueHandling = NullValueHandling.Ignore)]
+    public string? DeviceFingerprint { get; set; }
+
+    /// <summary>The row's display name (CustomName, else Name). Absent on older launches.</summary>
+    [JsonProperty("device_name", NullValueHandling = NullValueHandling.Ignore)]
+    public string? DeviceName { get; set; }
+
     /// <summary>What the receiver should do on boot.</summary>
     [JsonProperty("intent")]
     public CastIntent Intent { get; set; } = CastIntent.Idle();

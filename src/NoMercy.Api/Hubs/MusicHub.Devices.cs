@@ -318,7 +318,9 @@ public partial class MusicHub
                             serverUrl: serverUrl,
                             deviceId: targetUlid,
                             intent: intent,
-                            clientLocale: locale
+                            clientLocale: locale,
+                            deviceFingerprint: targetTv.DeviceId,
+                            deviceName: targetTv.CustomName ?? targetTv.Name
                         ),
                     isTargetOnlineNow: () => _busRegistry.IsOnline(targetUlid)
                 )
