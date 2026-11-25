@@ -64,6 +64,9 @@ public record CardData
     [JsonProperty("poster")]
     public string? Poster { get; set; }
 
+    [JsonProperty("item_posters")]
+    public string[] ItemPosters { get; set; } = [];
+
     [JsonProperty("logo")]
     public string? Logo { get; set; }
 
@@ -267,6 +270,7 @@ public record CardData
         CreatedAt = card.CreatedAt;
         Backdrop = card.Backdrop;
         Poster = card.Poster;
+        ItemPosters = card.ItemPosters;
         Logo = card.Logo;
         ColorPalette = card.ColorPalette;
         HaveItems = card.HaveItems;
@@ -286,6 +290,7 @@ public record CardData
         Type = dto.Type.OrEmpty();
         Backdrop = dto.Backdrop;
         Poster = dto.Poster;
+        ItemPosters = dto.ItemPosters;
         Logo = dto.Logo;
         ColorPalette = dto.ColorPalette;
         HaveItems = dto.HaveItems;
