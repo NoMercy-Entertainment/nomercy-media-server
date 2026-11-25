@@ -40,7 +40,8 @@ public sealed class StorageSettingsService(
             backupSettings.RetainCount,
             (int)(imageSettings.MaxBytes / BytesPerMegabyte),
             (int)imageSettings.OrphanGrace.TotalDays,
-            imageSettings.Hour
+            imageSettings.Hour,
+            backupSettings.PruneHandMadeCopies
         );
 
     public async Task<StorageSettingsChange> ApplyAsync(StorageSettingsPatch patch, Guid userId)
@@ -114,6 +115,13 @@ public sealed class StorageSettingsService(
 
         foreach (Field field in given)
             await store.SetValueAsync(field.Key, field.Value!.Value.ToString(), userId);
+
+        if (patch.BackupPruneHandMadeCopies is { } pruneHandMade)
+            await store.SetValueAsync(
+                BackupSettings.PruneHandMadeCopiesKey,
+                pruneHandMade ? "true" : "false",
+                userId
+            );
 
         return new(Read(), null, given.Any(field => field.NeedsRestart));
     }

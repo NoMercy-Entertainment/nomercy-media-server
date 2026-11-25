@@ -17,5 +17,8 @@ public interface IStorageCleanupService
     /// Runs the nightly maintenance passes now. Null, with nothing run, when a
     /// clean-up or a nightly pass is already running.
     /// </summary>
-    Task<StorageCleanupResult?> RunAsync(CancellationToken cancellationToken);
+    Task<StorageCleanupResult?> RunAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    );
 }

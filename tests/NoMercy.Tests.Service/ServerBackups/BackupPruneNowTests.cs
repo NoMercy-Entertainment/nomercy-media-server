@@ -44,7 +44,44 @@ public sealed class BackupPruneNowTests : IDisposable
     }
 
     [Fact]
-    public async Task PruneAsync_AnOldHandMadeCopy_GoesAndItsBytesAreReported()
+    public async Task PruneAsync_AnOldLooseCopy_GoesAndItsBytesAreReported()
+    {
+        _folder.CreateServer();
+        BackupService service = BackupTestFolder.CreateBackupService(_folder.Options(3));
+        await service.CreateAsync("only", CancellationToken.None);
+        string copy = Path.Combine(_folder.BackupRoot, "media.20200101000000.db");
+        File.WriteAllBytes(copy, new byte[4321]);
+
+        BackupPruneResult result = await service.PruneAsync(CancellationToken.None);
+
+        File.Exists(copy).Should().BeFalse();
+        result.CopiesRemoved.Should().Be(1);
+        result.CopyBytes.Should().Be(4321);
+        result.HandMadeRemoved.Should().Be(0);
+        result.SetsRemoved.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task PruneAsync_AnOldHandMadeCopyWithTheFlag_GoesAndItsBytesAreReportedApart()
+    {
+        _folder.CreateServer();
+        BackupService service = BackupTestFolder.CreateBackupService(_folder.Options(3));
+        await service.CreateAsync("only", CancellationToken.None);
+        string copy = Path.Combine(_folder.DataRoot, HandMade);
+        File.WriteAllBytes(copy, new byte[4321]);
+        File.SetLastWriteTimeUtc(copy, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        BackupPruneResult result = await service.PruneAsync(true, CancellationToken.None);
+
+        File.Exists(copy).Should().BeFalse();
+        result.HandMadeRemoved.Should().Be(1);
+        result.HandMadeBytes.Should().Be(4321);
+        result.CopiesRemoved.Should().Be(0);
+        result.CopyBytes.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task PruneAsync_AnOldHandMadeCopyWithoutTheFlag_Stays()
     {
         _folder.CreateServer();
         BackupService service = BackupTestFolder.CreateBackupService(_folder.Options(3));
@@ -55,10 +92,8 @@ public sealed class BackupPruneNowTests : IDisposable
 
         BackupPruneResult result = await service.PruneAsync(CancellationToken.None);
 
-        File.Exists(copy).Should().BeFalse();
-        result.CopiesRemoved.Should().Be(1);
-        result.CopyBytes.Should().Be(4321);
-        result.SetsRemoved.Should().Be(0);
+        File.Exists(copy).Should().BeTrue();
+        result.HandMadeRemoved.Should().Be(0);
     }
 
     [Fact]

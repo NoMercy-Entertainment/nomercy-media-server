@@ -22,14 +22,20 @@ public sealed class StorageCleanupService(
     MaintenanceGate gate
 ) : IStorageCleanupService
 {
-    public async Task<StorageCleanupResult?> RunAsync(CancellationToken cancellationToken)
+    public async Task<StorageCleanupResult?> RunAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    )
     {
         using IDisposable? lease = gate.TryEnter();
         if (lease is null)
             return null;
 
         DatabaseMaintenanceResult database = await databases.RunAsync(cancellationToken);
-        BackupPruneResult backup = await backups.PruneAsync(cancellationToken);
+        BackupPruneResult backup = await backups.PruneAsync(
+            includeHandMadeCopies,
+            cancellationToken
+        );
         ImageCacheSweepResult? image = await images.RunAsync(cancellationToken);
 
         return new(
@@ -38,6 +44,7 @@ public sealed class StorageCleanupService(
                 new("database_queue", Freed(database.Queue)),
                 new("backup_sets", backup.SetBytes),
                 new("backup_copies", backup.CopyBytes),
+                new("backup_hand_made", backup.HandMadeBytes),
                 new("image_cache", image is null ? 0 : image.OrphanBytes + image.EvictedBytes),
             ],
             database.FailedJobsRemoved

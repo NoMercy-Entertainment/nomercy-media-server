@@ -110,15 +110,15 @@ public sealed class StorageReportService(
     private IEnumerable<StoragePart> BackupParts()
     {
         long sets = FolderBytes(Path.Combine(locations.BackupRoot, "sets"));
-        long copies =
-            TopLevelFileBytes(locations.BackupRoot, _ => true)
-            + TopLevelFileBytes(
-                locations.DataRoot,
-                name => DatabaseCopyName.TryParseHandMade(name, out string _)
-            );
+        long copies = TopLevelFileBytes(locations.BackupRoot, _ => true);
+        long handMade = TopLevelFileBytes(
+            locations.DataRoot,
+            name => DatabaseCopyName.TryParseHandMade(name, out string _)
+        );
 
         yield return new("backup_sets", "backups", sets, 0);
         yield return new("backup_copies", "backups", copies, 0);
+        yield return new("backup_hand_made", "backups", handMade, 0);
     }
 
     private IEnumerable<StoragePart> ImageParts()

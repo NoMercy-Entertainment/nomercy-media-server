@@ -13,11 +13,14 @@ namespace NoMercy.Data.ServerBackups;
 
 /// <summary>
 /// What a prune removed. <see cref="SetBytes"/> includes the half-built sets a
-/// crashed backup left; <see cref="CopiesRemoved"/> counts single-database copies.
+/// crashed backup left; <see cref="CopiesRemoved"/> counts single-database copies made by the
+/// server; <see cref="HandMadeRemoved"/> counts the copies a person made by hand.
 /// </summary>
 public sealed record BackupPruneResult(
     int SetsRemoved,
     long SetBytes,
     int CopiesRemoved,
-    long CopyBytes
+    long CopyBytes,
+    int HandMadeRemoved = 0,
+    long HandMadeBytes = 0
 );

@@ -47,9 +47,14 @@ public class StorageController(
     [Route("cleanup")]
     [ProducesResponseType(typeof(StorageCleanupResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Cleanup()
+    public async Task<IActionResult> Cleanup(
+        [FromQuery(Name = "include_hand_made_copies")] bool includeHandMadeCopies = false
+    )
     {
-        StorageCleanupResult? result = await cleanup.RunAsync(HttpContext.RequestAborted);
+        StorageCleanupResult? result = await cleanup.RunAsync(
+            includeHandMadeCopies,
+            HttpContext.RequestAborted
+        );
         return result is null
             ? ConflictResponse("A clean-up or the nightly maintenance is already running.")
             : Ok(StorageCleanupResultDto.From(result));

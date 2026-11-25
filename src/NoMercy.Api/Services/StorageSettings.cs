@@ -18,5 +18,6 @@ public sealed record StorageSettings(
     int BackupRetainCount,
     int ImageCacheMaxMegabytes,
     int ImageCacheOrphanGraceDays,
-    int ImageCacheHour
+    int ImageCacheHour,
+    bool BackupPruneHandMadeCopies
 );

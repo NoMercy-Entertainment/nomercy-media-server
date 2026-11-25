@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Data.ServerBackups;
+using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Tests.Service.ServerBackups;
 
@@ -23,7 +24,7 @@ public sealed class BackupHandMadeCopyTests : IDisposable
     public void Dispose() => _folder.Dispose();
 
     [Fact]
-    public async Task HandMadeCopy_OlderThanEveryKeptSet_GoesWithItsSideFiles()
+    public async Task HandMadeCopy_OlderThanEveryKeptSet_StaysWhileTheSettingIsOff()
     {
         _folder.CreateServer();
         WriteInDataFolder(HandMade, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
@@ -31,7 +32,54 @@ public sealed class BackupHandMadeCopyTests : IDisposable
 
         await Service().CreateAsync("daily scheduled backup", CancellationToken.None);
 
+        FilesInDataFolder().Should().Contain([HandMade, HandMade + "-wal"]);
+    }
+
+    [Fact]
+    public async Task HandMadeCopy_OlderThanEveryKeptSet_GoesWithItsSideFilesWhenTheSettingIsOn()
+    {
+        _folder.CreateServer();
+        WriteInDataFolder(HandMade, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        WriteInDataFolder(HandMade + "-wal", new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        await Service(pruneHandMade: true)
+            .CreateAsync("daily scheduled backup", CancellationToken.None);
+
         FilesInDataFolder().Should().NotContain(name => name.StartsWith("media.db.bak-"));
+    }
+
+    [Fact]
+    public async Task PruneAsync_WithTheFlag_RemovesTheHandMadeCopyThisRunOnly()
+    {
+        _folder.CreateServer();
+        BackupService service = Service();
+        await service.CreateAsync("only", CancellationToken.None);
+        WriteInDataFolder(HandMade, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        BackupPruneResult withoutFlag = await service.PruneAsync(false, CancellationToken.None);
+        FilesInDataFolder().Should().Contain(HandMade);
+        BackupPruneResult withFlag = await service.PruneAsync(true, CancellationToken.None);
+
+        withoutFlag.HandMadeRemoved.Should().Be(0);
+        withFlag.HandMadeRemoved.Should().Be(1);
+        withFlag.HandMadeBytes.Should().Be("a hand-made copy".Length);
+        withFlag.CopiesRemoved.Should().Be(0);
+        FilesInDataFolder().Should().NotContain(HandMade);
+    }
+
+    [Fact]
+    public async Task PruneAsync_WithTheFlagAfterwardsOff_KeepsTheNextHandMadeCopy()
+    {
+        _folder.CreateServer();
+        BackupService service = Service();
+        await service.CreateAsync("only", CancellationToken.None);
+        WriteInDataFolder(HandMade, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        await service.PruneAsync(true, CancellationToken.None);
+        WriteInDataFolder(HandMade, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        await service.PruneAsync(CancellationToken.None);
+
+        FilesInDataFolder().Should().Contain(HandMade);
     }
 
     [Fact]
@@ -82,8 +130,20 @@ public sealed class BackupHandMadeCopyTests : IDisposable
             .BeEquivalentTo([newest.Id]);
     }
 
-    private BackupService Service(int retainCount = BackupOptions.DefaultRetainCount) =>
-        BackupTestFolder.CreateBackupService(_folder.Options(retainCount));
+    private BackupService Service(
+        int retainCount = BackupOptions.DefaultRetainCount,
+        bool pruneHandMade = false
+    )
+    {
+        Mock<IConfigurationStore> store = new();
+        store
+            .Setup(x => x.GetValue(BackupSettings.PruneHandMadeCopiesKey))
+            .Returns(pruneHandMade ? "true" : null);
+        return BackupTestFolder.CreateBackupService(
+            _folder.Options(retainCount),
+            settings: new BackupSettings(store.Object)
+        );
+    }
 
     private void WriteInDataFolder(string name, DateTime lastWriteUtc)
     {

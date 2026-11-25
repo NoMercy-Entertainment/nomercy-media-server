@@ -34,6 +34,9 @@ public record StorageSettingsDto
     [JsonProperty("image_cache_hour")]
     public int ImageCacheHour { get; init; }
 
+    [JsonProperty("backup_prune_hand_made_copies")]
+    public bool BackupPruneHandMadeCopies { get; init; }
+
     public static StorageSettingsDto From(StorageSettings settings) =>
         new()
         {
@@ -43,5 +46,6 @@ public record StorageSettingsDto
             ImageCacheMaxMegabytes = settings.ImageCacheMaxMegabytes,
             ImageCacheOrphanGraceDays = settings.ImageCacheOrphanGraceDays,
             ImageCacheHour = settings.ImageCacheHour,
+            BackupPruneHandMadeCopies = settings.BackupPruneHandMadeCopies,
         };
 }

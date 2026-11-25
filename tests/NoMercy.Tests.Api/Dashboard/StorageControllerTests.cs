@@ -51,7 +51,7 @@ public sealed class StorageControllerTests(NoMercyApiFactory factory)
             })
         );
 
-    private static StorageSettings DefaultSettings() => new(3, 30, 3, 10240, 14, 4);
+    private static StorageSettings DefaultSettings() => new(3, 30, 3, 10240, 14, 4, false);
 
     [Theory]
     [InlineData("GET", Route)]
@@ -123,7 +123,7 @@ public sealed class StorageControllerTests(NoMercyApiFactory factory)
     public async Task Cleanup_ReportsTheBytesFreedPerPart()
     {
         _cleanup
-            .Setup(service => service.RunAsync(It.IsAny<CancellationToken>()))
+            .Setup(service => service.RunAsync(false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(
                 new StorageCleanupResult([new("database_media", 700), new("image_cache", 300)], 12)
             );
@@ -141,10 +141,37 @@ public sealed class StorageControllerTests(NoMercyApiFactory factory)
     }
 
     [Fact]
+    public async Task Cleanup_WithTheFlag_AsksForTheHandMadeCopiesToo()
+    {
+        _cleanup
+            .Setup(service => service.RunAsync(true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StorageCleanupResult([new("backup_hand_made", 900)], 0));
+        using WebApplicationFactory<Startup> host = Host();
+        using HttpClient owner = host.CreateClient().AsAuthenticated();
+
+        using HttpResponseMessage response = await owner.PostAsync(
+            Route + "/cleanup?include_hand_made_copies=true",
+            null
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        JObject body = JObject.Parse(await response.Content.ReadAsStringAsync());
+        body["parts"]![0]!["id"]!.Value<string>().Should().Be("backup_hand_made");
+        _cleanup.Verify(
+            service => service.RunAsync(true, It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+        _cleanup.Verify(
+            service => service.RunAsync(false, It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
     public async Task Cleanup_WhileAnotherPassRuns_AnswersConflict()
     {
         _cleanup
-            .Setup(service => service.RunAsync(It.IsAny<CancellationToken>()))
+            .Setup(service => service.RunAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((StorageCleanupResult?)null);
         using WebApplicationFactory<Startup> host = Host();
         using HttpClient owner = host.CreateClient().AsAuthenticated();
@@ -159,7 +186,7 @@ public sealed class StorageControllerTests(NoMercyApiFactory factory)
     {
         _settings
             .Setup(service => service.Read())
-            .Returns(new StorageSettings(2, 7, 5, 2048, 21, 6));
+            .Returns(new StorageSettings(2, 7, 5, 2048, 21, 6, true));
         using WebApplicationFactory<Startup> host = Host();
         using HttpClient owner = host.CreateClient().AsAuthenticated();
 
@@ -173,6 +200,7 @@ public sealed class StorageControllerTests(NoMercyApiFactory factory)
         body["image_cache_max_megabytes"]!.Value<int>().Should().Be(2048);
         body["image_cache_orphan_grace_days"]!.Value<int>().Should().Be(21);
         body["image_cache_hour"]!.Value<int>().Should().Be(6);
+        body["backup_prune_hand_made_copies"]!.Value<bool>().Should().BeTrue();
     }
 
     [Fact]

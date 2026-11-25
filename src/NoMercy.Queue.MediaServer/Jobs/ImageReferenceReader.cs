@@ -9,8 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
 
 namespace NoMercy.Queue.MediaServer.Jobs;
 
@@ -27,33 +29,59 @@ public class ImageReferenceReader(IDbContextFactory<MediaContext> contextFactory
         );
 
         List<string?> stored = [];
-        stored.AddRange(await Column(context.Images.Select(x => x.FilePath)));
-        stored.AddRange(await Column(context.Movies.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Movies.Select(x => x.Backdrop)));
-        stored.AddRange(await Column(context.Tvs.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Tvs.Select(x => x.Backdrop)));
-        stored.AddRange(await Column(context.Seasons.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Episodes.Select(x => x.Still)));
-        stored.AddRange(await Column(context.People.Select(x => x.Profile)));
-        stored.AddRange(await Column(context.Collections.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Collections.Select(x => x.Backdrop)));
-        stored.AddRange(await Column(context.Networks.Select(x => x.Logo)));
-        stored.AddRange(await Column(context.Companies.Select(x => x.Logo)));
-        stored.AddRange(await Column(context.WatchProviders.Select(x => x.Logo)));
-        stored.AddRange(await Column(context.Recommendations.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Recommendations.Select(x => x.Backdrop)));
-        stored.AddRange(await Column(context.Similar.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Similar.Select(x => x.Backdrop)));
-        stored.AddRange(await Column(context.Specials.Select(x => x.Poster)));
-        stored.AddRange(await Column(context.Specials.Select(x => x.Backdrop)));
-        stored.AddRange(await Column(context.Specials.Select(x => x.Logo)));
+        foreach (ImageColumn column in Columns)
+            stored.AddRange(await column.Query(context).Distinct().ToListAsync(cancellationToken));
+
+        List<InboxItem> inbox = await context
+            .InboxItems.AsNoTracking()
+            .ToListAsync(cancellationToken);
+        foreach (InboxItem item in inbox)
+        {
+            stored.AddRange(item.Candidates.Select(candidate => candidate.PosterPath));
+            stored.Add(item.SelectedMatch?.PosterPath);
+        }
 
         return stored
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(path => path!.Replace("/", "").Replace("\\", ""))
             .ToHashSet();
-
-        async Task<List<string?>> Column(IQueryable<string?> query) =>
-            await query.Distinct().ToListAsync(cancellationToken);
     }
+
+    /// <summary>Every column that holds the path of an image the cache may store in original/.</summary>
+    public static IReadOnlyList<ImageColumn> Columns { get; } =
+    [
+        Of(c => c.Images, x => x.FilePath),
+        Of(c => c.Movies, x => x.Poster),
+        Of(c => c.Movies, x => x.Backdrop),
+        Of(c => c.Tvs, x => x.Poster),
+        Of(c => c.Tvs, x => x.Backdrop),
+        Of(c => c.Seasons, x => x.Poster),
+        Of(c => c.Episodes, x => x.Still),
+        Of(c => c.People, x => x.Profile),
+        Of(c => c.Collections, x => x.Poster),
+        Of(c => c.Collections, x => x.Backdrop),
+        Of(c => c.Networks, x => x.Logo),
+        Of(c => c.Companies, x => x.Logo),
+        Of(c => c.WatchProviders, x => x.Logo),
+        Of(c => c.Recommendations, x => x.Poster),
+        Of(c => c.Recommendations, x => x.Backdrop),
+        Of(c => c.Similar, x => x.Poster),
+        Of(c => c.Similar, x => x.Backdrop),
+        Of(c => c.Specials, x => x.Poster),
+        Of(c => c.Specials, x => x.Backdrop),
+        Of(c => c.Specials, x => x.Logo),
+        Of(c => c.Libraries, x => x.Image),
+        Of(c => c.UserPlaylists, x => x.Cover),
+    ];
+
+    private static ImageColumn Of<TEntity>(
+        Func<MediaContext, DbSet<TEntity>> set,
+        Expression<Func<TEntity, string?>> column
+    )
+        where TEntity : class =>
+        new(
+            typeof(TEntity),
+            ((MemberExpression)column.Body).Member.Name,
+            context => set(context).Select(column)
+        );
 }

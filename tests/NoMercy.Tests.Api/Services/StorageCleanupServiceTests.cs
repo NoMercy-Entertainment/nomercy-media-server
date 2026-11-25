@@ -41,8 +41,8 @@ public sealed class StorageCleanupServiceTests
                 )
             );
         _backups
-            .Setup(service => service.PruneAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BackupPruneResult(2, 5000, 1, 800));
+            .Setup(service => service.PruneAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BackupPruneResult(2, 5000, 1, 800, 1, 9000));
         _images
             .Setup(pass => pass.RunAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ImageCacheSweepResult(3, 60, 4, 40, 9999));
@@ -53,7 +53,7 @@ public sealed class StorageCleanupServiceTests
     {
         EveryPassFinishes();
 
-        StorageCleanupResult? result = await Service().RunAsync(CancellationToken.None);
+        StorageCleanupResult? result = await Service().RunAsync(false, CancellationToken.None);
 
         result.Should().NotBeNull();
         result!
@@ -66,11 +66,27 @@ public sealed class StorageCleanupServiceTests
                     ["database_queue"] = 90,
                     ["backup_sets"] = 5000,
                     ["backup_copies"] = 800,
+                    ["backup_hand_made"] = 9000,
                     ["image_cache"] = 100,
                 }
             );
-        result.TotalBytesFreed.Should().Be(6690);
+        result.TotalBytesFreed.Should().Be(15690);
         result.FailedJobsRemoved.Should().Be(12);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_PassesTheHandMadeFlagToThePrune(bool includeHandMadeCopies)
+    {
+        EveryPassFinishes();
+
+        await Service().RunAsync(includeHandMadeCopies, CancellationToken.None);
+
+        _backups.Verify(
+            service => service.PruneAsync(includeHandMadeCopies, It.IsAny<CancellationToken>()),
+            Times.Once
+        );
     }
 
     [Fact]
@@ -81,7 +97,7 @@ public sealed class StorageCleanupServiceTests
             .Setup(pass => pass.RunAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((ImageCacheSweepResult?)null);
 
-        StorageCleanupResult? result = await Service().RunAsync(CancellationToken.None);
+        StorageCleanupResult? result = await Service().RunAsync(false, CancellationToken.None);
 
         result!.Parts.Single(part => part.Id == "image_cache").BytesFreed.Should().Be(0);
         result.Parts.Single(part => part.Id == "backup_sets").BytesFreed.Should().Be(5000);
@@ -102,15 +118,18 @@ public sealed class StorageCleanupServiceTests
                 return new DatabaseMaintenanceResult(0, null, null);
             });
 
-        Task<StorageCleanupResult?> first = Service().RunAsync(CancellationToken.None);
+        Task<StorageCleanupResult?> first = Service().RunAsync(false, CancellationToken.None);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        StorageCleanupResult? second = await Service().RunAsync(CancellationToken.None);
+        StorageCleanupResult? second = await Service().RunAsync(false, CancellationToken.None);
         release.SetResult();
         await first.WaitAsync(TimeSpan.FromSeconds(5));
 
         second.Should().BeNull();
         _databases.Verify(pass => pass.RunAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _backups.Verify(service => service.PruneAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _backups.Verify(
+            service => service.PruneAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
         _images.Verify(pass => pass.RunAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -120,7 +139,7 @@ public sealed class StorageCleanupServiceTests
         EveryPassFinishes();
         using IDisposable nightly = _gate.TryEnter()!;
 
-        StorageCleanupResult? result = await Service().RunAsync(CancellationToken.None);
+        StorageCleanupResult? result = await Service().RunAsync(false, CancellationToken.None);
 
         result.Should().BeNull();
         _databases.Invocations.Should().BeEmpty();
@@ -132,9 +151,9 @@ public sealed class StorageCleanupServiceTests
     public async Task RunAsync_AfterTheFirstFinished_RunsAgain()
     {
         EveryPassFinishes();
-        await Service().RunAsync(CancellationToken.None);
+        await Service().RunAsync(false, CancellationToken.None);
 
-        StorageCleanupResult? again = await Service().RunAsync(CancellationToken.None);
+        StorageCleanupResult? again = await Service().RunAsync(false, CancellationToken.None);
 
         again.Should().NotBeNull();
     }

@@ -18,6 +18,13 @@ public class BackupSettings(IConfigurationStore configurationStore)
 {
     public const string RetainCountKey = "backup.retain_count";
 
+    public const string PruneHandMadeCopiesKey = "backup.prune_hand_made_copies";
+
+    /// <summary>Off unless "true": a copy made by hand cannot be made again.</summary>
+    public bool PruneHandMadeCopies =>
+        bool.TryParse(configurationStore.GetValue(PruneHandMadeCopiesKey), out bool parsed)
+        && parsed;
+
     public int RetainCount =>
         int.TryParse(configurationStore.GetValue(RetainCountKey), out int parsed) && parsed >= 1
             ? parsed

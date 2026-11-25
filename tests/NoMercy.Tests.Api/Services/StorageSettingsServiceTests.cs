@@ -60,7 +60,8 @@ public sealed class StorageSettingsServiceTests
                     BackupOptions.DefaultRetainCount,
                     ImageCacheSettings.DefaultMaxMegabytes,
                     ImageCacheSettings.DefaultOrphanGraceDays,
-                    ImageCacheSettings.DefaultHour
+                    ImageCacheSettings.DefaultHour,
+                    false
                 )
             );
     }
@@ -158,6 +159,22 @@ public sealed class StorageSettingsServiceTests
 
         change.Problem.Should().NotBeNullOrEmpty();
         _stored.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true, "true")]
+    [InlineData(false, "false")]
+    public async Task ApplyAsync_PruneHandMadeCopies_IsStoredUnderTheKeyThePruneReads(
+        bool value,
+        string stored
+    )
+    {
+        StorageSettingsChange change = await Service()
+            .ApplyAsync(new StorageSettingsPatch { BackupPruneHandMadeCopies = value }, _userId);
+
+        _stored[BackupSettings.PruneHandMadeCopiesKey].Should().Be(stored);
+        change.Settings!.BackupPruneHandMadeCopies.Should().Be(value);
+        change.RestartRequired.Should().BeFalse();
     }
 
     [Fact]

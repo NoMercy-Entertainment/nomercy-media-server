@@ -26,7 +26,8 @@ public sealed class BackupService(
     BackupOptions options,
     TimeProvider clock,
     ILogger<BackupService> logger,
-    IVolumeInspector? volumes = null
+    IVolumeInspector? volumes = null,
+    BackupSettings? settings = null
 ) : IBackupService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -49,7 +50,7 @@ public sealed class BackupService(
                 manifest.Id,
                 manifest.Reason
             );
-            await PruneCoreAsync(cancellationToken);
+            await PruneCoreAsync(false, cancellationToken);
             return BackupSetSummary.From(manifest);
         }
         finally
@@ -118,7 +119,7 @@ public sealed class BackupService(
                 backupId,
                 safety.Id
             );
-            await PruneCoreAsync(CancellationToken.None);
+            await PruneCoreAsync(false, CancellationToken.None);
             return new(RestoreScheduleStatus.Scheduled, [], pending);
         }
         finally
@@ -174,12 +175,18 @@ public sealed class BackupService(
     /// a restore still needs, and clears any folder a crashed backup left half
     /// built. Runs under the gate, so no set is being built while it looks.
     /// </summary>
-    public async Task<BackupPruneResult> PruneAsync(CancellationToken cancellationToken)
+    public Task<BackupPruneResult> PruneAsync(CancellationToken cancellationToken) =>
+        PruneAsync(false, cancellationToken);
+
+    public async Task<BackupPruneResult> PruneAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    )
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            return await PruneCoreAsync(cancellationToken);
+            return await PruneCoreAsync(includeHandMadeCopies, cancellationToken);
         }
         finally
         {
@@ -187,7 +194,10 @@ public sealed class BackupService(
         }
     }
 
-    private async Task<BackupPruneResult> PruneCoreAsync(CancellationToken cancellationToken)
+    private async Task<BackupPruneResult> PruneCoreAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    )
     {
         int setsRemoved = 0;
         long setBytes = 0;
@@ -220,8 +230,18 @@ public sealed class BackupService(
             }
 
             setBytes += ClearHalfBuiltSets();
-            (int copies, long copyBytes) = await PruneSupersededCopiesAsync(cancellationToken);
-            return new(setsRemoved, setBytes, copies, copyBytes);
+            SupersededCopies copies = await PruneSupersededCopiesAsync(
+                includeHandMadeCopies,
+                cancellationToken
+            );
+            return new(
+                setsRemoved,
+                setBytes,
+                copies.Removed,
+                copies.Bytes,
+                copies.HandMadeRemoved,
+                copies.HandMadeBytes
+            );
         }
         catch (Exception exception)
         {
@@ -252,7 +272,7 @@ public sealed class BackupService(
             if (storage.DirectoryExists(options.SetsRoot))
             {
                 ClearHalfBuiltSets();
-                await PruneSupersededCopiesAsync(cancellationToken);
+                await PruneSupersededCopiesAsync(false, cancellationToken);
             }
         }
         catch (Exception exception)
@@ -338,12 +358,13 @@ public sealed class BackupService(
     /// be the last state from before an update.
     /// </para>
     /// </summary>
-    private async Task<(int Removed, long Bytes)> PruneSupersededCopiesAsync(
+    private async Task<SupersededCopies> PruneSupersededCopiesAsync(
+        bool includeHandMadeCopies,
         CancellationToken cancellationToken
     )
     {
         if (!storage.DirectoryExists(options.SetsRoot))
-            return (0, 0);
+            return new(0, 0, 0, 0);
 
         List<string> goodSets = [];
         foreach (string id in ListSetIds())
@@ -357,7 +378,7 @@ public sealed class BackupService(
         }
 
         if (goodSets.Count == 0)
-            return (0, 0);
+            return new(0, 0, 0, 0);
 
         string oldestKept = DatabaseCopyName.StampOfSet(goodSets[^1]);
         HashSet<string> databases = options
@@ -384,30 +405,41 @@ public sealed class BackupService(
             removed++;
         }
 
-        // Copies made by hand next to the live databases are judged by the time they were written.
-        foreach (string file in HandMadeCopies(databases))
-        {
-            string writtenAt = storage
-                .GetLastWriteTimeUtc(file)
-                .ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-            if (string.CompareOrdinal(writtenAt, oldestKept) >= 0)
-                continue;
+        // A copy made by hand cannot be made again: it goes only when asked, judged by its write time.
+        int handMadeRemoved = 0;
+        long handMadeBytes = 0;
+        if (includeHandMadeCopies || settings?.PruneHandMadeCopies == true)
+            foreach (string file in HandMadeCopies(databases))
+            {
+                string writtenAt = storage
+                    .GetLastWriteTimeUtc(file)
+                    .ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+                if (string.CompareOrdinal(writtenAt, oldestKept) >= 0)
+                    continue;
 
-            bytes += storage.GetFileSize(file);
-            storage.DeleteFile(file);
-            removed++;
-        }
+                handMadeBytes += storage.GetFileSize(file);
+                storage.DeleteFile(file);
+                handMadeRemoved++;
+            }
 
-        if (removed > 0)
+        if (removed + handMadeRemoved > 0)
             logger.LogInformation(
-                "Removed {Count} old database copies ({Bytes} bytes): every backup set "
-                    + "that is kept is newer than they are",
-                removed,
-                bytes
+                "Removed {Count} old database copies ({Bytes} bytes), {HandMade} made by hand: "
+                    + "every backup set that is kept is newer than they are",
+                removed + handMadeRemoved,
+                bytes + handMadeBytes,
+                handMadeRemoved
             );
 
-        return (removed, bytes);
+        return new(removed, bytes, handMadeRemoved, handMadeBytes);
     }
+
+    private sealed record SupersededCopies(
+        int Removed,
+        long Bytes,
+        int HandMadeRemoved,
+        long HandMadeBytes
+    );
 
     private List<string> HandMadeCopies(HashSet<string> databases) =>
         storage

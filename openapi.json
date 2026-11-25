@@ -5633,6 +5633,16 @@
         "tags": [
           "Dashboard Storage"
         ],
+        "parameters": [
+          {
+            "name": "include_hand_made_copies",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -17377,6 +17387,9 @@
           "image_cache_hour": {
             "type": "integer",
             "format": "int32"
+          },
+          "backup_prune_hand_made_copies": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -17412,6 +17425,10 @@
           "image_cache_hour": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "backup_prune_hand_made_copies": {
+            "type": "boolean",
             "nullable": true
           }
         },

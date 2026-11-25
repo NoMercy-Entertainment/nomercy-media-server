@@ -130,7 +130,9 @@ public sealed class StorageReportServiceTests : IDisposable
 
         Bytes(report, "database_app").Should().Be(1000);
         Bytes(report, "backup_sets").Should().Be(5000);
-        Bytes(report, "backup_copies").Should().Be(1000);
+        Bytes(report, "backup_copies").Should().Be(700);
+        Bytes(report, "backup_hand_made").Should().Be(300);
+        report.Parts.Single(part => part.Id == "backup_hand_made").Group.Should().Be("backups");
         Bytes(report, "image_original").Should().Be(30);
         Bytes(report, "image_music").Should().Be(400);
         Bytes(report, "image_temp").Should().Be(50);

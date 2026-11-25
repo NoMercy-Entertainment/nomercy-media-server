@@ -33,4 +33,7 @@ public sealed record StorageSettingsPatch
 
     [JsonProperty("image_cache_hour")]
     public int? ImageCacheHour { get; init; }
+
+    [JsonProperty("backup_prune_hand_made_copies")]
+    public bool? BackupPruneHandMadeCopies { get; init; }
 }
