@@ -78,6 +78,63 @@ public sealed class CastSessionTokenServiceTests
         );
 
     [Fact]
+    public async Task MintAsync_DeviceIdentityGiven_LaunchDataCarriesFingerprintAndName()
+    {
+        using LoopbackHttpServer server = new();
+        Guid callerId = Guid.NewGuid();
+        server.Handler = _ => new(200, ExchangeJson());
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+        Ulid deviceId = Ulid.NewUlid();
+        string fingerprint = Guid.NewGuid().ToString();
+
+        LaunchCustomData? result = await new CastSessionTokenService().MintAsync(
+            CreateJwt(server.BaseUrl, callerId),
+            callerId,
+            "server-1",
+            "https://server1.nomercy.app",
+            deviceId,
+            CastIntent.Idle(),
+            deviceFingerprint: fingerprint,
+            deviceName: "Living room"
+        );
+
+        Assert.NotNull(result);
+        Assert.Equal(deviceId.ToString(), result.DeviceId);
+        Assert.Equal(fingerprint, result.DeviceFingerprint);
+        Assert.Equal("Living room", result.DeviceName);
+    }
+
+    [Fact]
+    public void LaunchCustomData_Serialized_UsesTheAgreedFieldNames()
+    {
+        LaunchCustomData data = new()
+        {
+            DeviceId = "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            DeviceFingerprint = "fp-1",
+            DeviceName = "Living room",
+        };
+
+        Newtonsoft.Json.Linq.JObject json = Newtonsoft.Json.Linq.JObject.Parse(
+            JsonConvert.SerializeObject(data)
+        );
+
+        Assert.Equal("fp-1", (string?)json["device_fingerprint"]);
+        Assert.Equal("Living room", (string?)json["device_name"]);
+        Assert.Equal("01ARZ3NDEKTSV4RRFFQ69G5FAV", (string?)json["device_id"]);
+    }
+
+    [Fact]
+    public void LaunchCustomData_NoDeviceIdentity_OmitsTheOptionalFields()
+    {
+        Newtonsoft.Json.Linq.JObject json = Newtonsoft.Json.Linq.JObject.Parse(
+            JsonConvert.SerializeObject(new LaunchCustomData())
+        );
+
+        Assert.False(json.ContainsKey("device_fingerprint"));
+        Assert.False(json.ContainsKey("device_name"));
+    }
+
+    [Fact]
     public async Task MintAsync_NoCallerBearer_ReturnsNull()
     {
         Assert.Null(await Mint(new(), null, Guid.NewGuid()));
