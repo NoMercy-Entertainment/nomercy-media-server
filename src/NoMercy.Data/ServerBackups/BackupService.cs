@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using NoMercy.Storage;
 
@@ -25,7 +26,8 @@ public sealed class BackupService(
     BackupOptions options,
     TimeProvider clock,
     ILogger<BackupService> logger,
-    IVolumeInspector? volumes = null
+    IVolumeInspector? volumes = null,
+    BackupSettings? settings = null
 ) : IBackupService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -48,7 +50,7 @@ public sealed class BackupService(
                 manifest.Id,
                 manifest.Reason
             );
-            await PruneAsync(cancellationToken);
+            await PruneCoreAsync(false, cancellationToken);
             return BackupSetSummary.From(manifest);
         }
         finally
@@ -117,7 +119,7 @@ public sealed class BackupService(
                 backupId,
                 safety.Id
             );
-            await PruneAsync(CancellationToken.None);
+            await PruneCoreAsync(false, CancellationToken.None);
             return new(RestoreScheduleStatus.Scheduled, [], pending);
         }
         finally
@@ -173,8 +175,32 @@ public sealed class BackupService(
     /// a restore still needs, and clears any folder a crashed backup left half
     /// built. Runs under the gate, so no set is being built while it looks.
     /// </summary>
-    private async Task PruneAsync(CancellationToken cancellationToken)
+    public Task<BackupPruneResult> PruneAsync(CancellationToken cancellationToken) =>
+        PruneAsync(false, cancellationToken);
+
+    public async Task<BackupPruneResult> PruneAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    )
     {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await PruneCoreAsync(includeHandMadeCopies, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<BackupPruneResult> PruneCoreAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    )
+    {
+        int setsRemoved = 0;
+        long setBytes = 0;
         try
         {
             HashSet<string> kept = await ProtectedSetIdsAsync(cancellationToken);
@@ -195,18 +221,40 @@ public sealed class BackupService(
                 .Concat(prunable.Where(damaged.Contains).Skip(retain));
             foreach (string id in pruned.ToList())
             {
-                storage.DeleteDirectory(Path.Combine(options.SetsRoot, id), recursive: true);
+                string folder = Path.Combine(options.SetsRoot, id);
+                long bytes = FolderBytes(folder);
+                storage.DeleteDirectory(folder, recursive: true);
+                setsRemoved++;
+                setBytes += bytes;
                 logger.LogInformation("Pruned old backup {BackupId}", id);
             }
 
-            ClearHalfBuiltSets();
-            await PruneSupersededCopiesAsync(cancellationToken);
+            setBytes += ClearHalfBuiltSets();
+            SupersededCopies copies = await PruneSupersededCopiesAsync(
+                includeHandMadeCopies,
+                cancellationToken
+            );
+            return new(
+                setsRemoved,
+                setBytes,
+                copies.Removed,
+                copies.Bytes,
+                copies.HandMadeRemoved,
+                copies.HandMadeBytes
+            );
         }
         catch (Exception exception)
         {
             logger.LogWarning("Backup pruning failed: {Reason}", exception.Message);
+            return new(setsRemoved, setBytes, 0, 0);
         }
     }
+
+    private long FolderBytes(string folder) =>
+        storage
+            .EnumerateEntries(folder, "*", SearchOption.AllDirectories)
+            .Where(entry => !entry.IsDirectory)
+            .Sum(entry => entry.Size);
 
     /// <summary>
     /// Writes a set, after first giving back what the backups folder holds for
@@ -224,7 +272,7 @@ public sealed class BackupService(
             if (storage.DirectoryExists(options.SetsRoot))
             {
                 ClearHalfBuiltSets();
-                await PruneSupersededCopiesAsync(cancellationToken);
+                await PruneSupersededCopiesAsync(false, cancellationToken);
             }
         }
         catch (Exception exception)
@@ -275,7 +323,8 @@ public sealed class BackupService(
         storage.FileExists(path) ? storage.GetFileSize(path) : 0;
 
     /// <summary>Removes every folder a backup that failed or was cut short left half built.</summary>
-    private void ClearHalfBuiltSets()
+    /// <returns>The bytes the folders held.</returns>
+    private long ClearHalfBuiltSets()
     {
         List<string> leftovers = storage
             .EnumerateFileSystemEntries(
@@ -285,8 +334,14 @@ public sealed class BackupService(
             )
             .Where(storage.DirectoryExists)
             .ToList();
+        long bytes = 0;
         foreach (string leftover in leftovers)
+        {
+            bytes += FolderBytes(leftover);
             storage.DeleteDirectory(leftover, recursive: true);
+        }
+
+        return bytes;
     }
 
     /// <summary>
@@ -303,10 +358,13 @@ public sealed class BackupService(
     /// be the last state from before an update.
     /// </para>
     /// </summary>
-    private async Task PruneSupersededCopiesAsync(CancellationToken cancellationToken)
+    private async Task<SupersededCopies> PruneSupersededCopiesAsync(
+        bool includeHandMadeCopies,
+        CancellationToken cancellationToken
+    )
     {
         if (!storage.DirectoryExists(options.SetsRoot))
-            return;
+            return new(0, 0, 0, 0);
 
         List<string> goodSets = [];
         foreach (string id in ListSetIds())
@@ -320,7 +378,7 @@ public sealed class BackupService(
         }
 
         if (goodSets.Count == 0)
-            return;
+            return new(0, 0, 0, 0);
 
         string oldestKept = DatabaseCopyName.StampOfSet(goodSets[^1]);
         HashSet<string> databases = options
@@ -347,14 +405,51 @@ public sealed class BackupService(
             removed++;
         }
 
-        if (removed > 0)
+        // A copy made by hand cannot be made again: it goes only when asked, judged by its write time.
+        int handMadeRemoved = 0;
+        long handMadeBytes = 0;
+        if (includeHandMadeCopies || settings?.PruneHandMadeCopies == true)
+            foreach (string file in HandMadeCopies(databases))
+            {
+                string writtenAt = storage
+                    .GetLastWriteTimeUtc(file)
+                    .ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+                if (string.CompareOrdinal(writtenAt, oldestKept) >= 0)
+                    continue;
+
+                handMadeBytes += storage.GetFileSize(file);
+                storage.DeleteFile(file);
+                handMadeRemoved++;
+            }
+
+        if (removed + handMadeRemoved > 0)
             logger.LogInformation(
-                "Removed {Count} old single-database copies ({Bytes} bytes): every backup set "
-                    + "that is kept is newer than they are",
-                removed,
-                bytes
+                "Removed {Count} old database copies ({Bytes} bytes), {HandMade} made by hand: "
+                    + "every backup set that is kept is newer than they are",
+                removed + handMadeRemoved,
+                bytes + handMadeBytes,
+                handMadeRemoved
             );
+
+        return new(removed, bytes, handMadeRemoved, handMadeBytes);
     }
+
+    private sealed record SupersededCopies(
+        int Removed,
+        long Bytes,
+        int HandMadeRemoved,
+        long HandMadeBytes
+    );
+
+    private List<string> HandMadeCopies(HashSet<string> databases) =>
+        storage
+            .EnumerateFileSystemEntries(options.DataRoot, "*", SearchOption.TopDirectoryOnly)
+            .Where(storage.FileExists)
+            .Where(file =>
+                DatabaseCopyName.TryParseHandMade(Path.GetFileName(file), out string name)
+                && databases.Contains(name)
+            )
+            .ToList();
 
     private async Task<bool> HasDamagedDatabaseAsync(
         string id,

@@ -19,7 +19,7 @@ namespace NoMercy.Data.ServerBackups;
 /// </summary>
 public sealed class BackupOptions
 {
-    public const int DefaultRetainCount = 5;
+    public const int DefaultRetainCount = 3;
 
     /// <summary>
     /// The backups folder. Single-database copies made before a migration sit at
@@ -70,7 +70,7 @@ public sealed class BackupOptions
     /// </summary>
     public string RestoreWorkRoot => Path.Combine(DataRoot, ".restore-work");
 
-    public static BackupOptions ForAppFiles()
+    public static BackupOptions ForAppFiles(int retainCount = DefaultRetainCount)
     {
         Version version = Software.Version ?? new Version(0, 0, 0);
         return new()
@@ -78,6 +78,7 @@ public sealed class BackupOptions
             BackupRoot = Path.Combine(AppFiles.DataPath, "backups"),
             DataRoot = AppFiles.DataPath,
             ConfigRoot = AppFiles.ConfigPath,
+            RetainCount = retainCount,
             Databases =
             [
                 new("app", AppFiles.AppDatabase),

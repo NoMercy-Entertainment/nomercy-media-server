@@ -136,7 +136,8 @@ public sealed class BackupTestFolder : IDisposable
         ISqliteFileOperations? sqlite = null,
         IStorageDriver? storage = null,
         IBackupSetWriter? writer = null,
-        IVolumeInspector? volumes = null
+        IVolumeInspector? volumes = null,
+        BackupSettings? settings = null
     ) =>
         new(
             storage ?? new LocalStorageDriver(),
@@ -144,7 +145,8 @@ public sealed class BackupTestFolder : IDisposable
             options,
             TimeProvider.System,
             NullLogger<BackupService>.Instance,
-            volumes
+            volumes,
+            settings
         );
 
     public void Dispose()

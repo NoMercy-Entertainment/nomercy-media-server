@@ -226,6 +226,9 @@ public interface IStorage
     /// </summary>
     bool TryMarkSparse(string path) => false;
 
+    /// <summary>Sets a file's last-write time to now. See <see cref="IStorageDriver.TryTouch"/>.</summary>
+    bool TryTouch(string path) => false;
+
     /// <summary>Driver's path separator. Convenience pass-through.</summary>
     char DirectorySeparator => Driver.DirectorySeparator;
 

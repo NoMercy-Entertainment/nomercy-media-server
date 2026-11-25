@@ -11,6 +11,8 @@ on:
     branches:
       - dev
       - 'refactor/**'
+      # Slice branches: every gate in CI before the merge to dev, instead of on the dev box.
+      - 'slice/**'
 
 concurrency:
   group: test-only-${{ github.ref }}

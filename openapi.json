@@ -5599,6 +5599,194 @@
         }
       }
     },
+    "/api/v1/dashboard/storage": {
+      "get": {
+        "tags": [
+          "Dashboard Storage"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageReportDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageReportDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageReportDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/storage/cleanup": {
+      "post": {
+        "tags": [
+          "Dashboard Storage"
+        ],
+        "parameters": [
+          {
+            "name": "include_hand_made_copies",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageCleanupResultDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageCleanupResultDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageCleanupResultDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/storage/settings": {
+      "get": {
+        "tags": [
+          "Dashboard Storage"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Dashboard Storage"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSettingsPatch"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSettingsPatch"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSettingsPatch"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSettingsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsUpdateResponseDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsUpdateResponseDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsUpdateResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/storage/probe": {
       "post": {
         "tags": [
@@ -17024,6 +17212,41 @@
         },
         "additionalProperties": false
       },
+      "StorageCleanupPartDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "bytes_freed": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageCleanupResultDto": {
+        "type": "object",
+        "properties": {
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageCleanupPartDto"
+            },
+            "nullable": true
+          },
+          "total_bytes_freed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed_jobs_removed": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "StorageListRequest": {
         "type": "object",
         "properties": {
@@ -17048,6 +17271,28 @@
           "path": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StoragePartDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "group": {
+            "type": "string",
+            "nullable": true
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reclaimable_bytes": {
+            "type": "integer",
+            "format": "int64"
           }
         },
         "additionalProperties": false
@@ -17090,6 +17335,113 @@
           },
           "config": {
             "$ref": "#/components/schemas/StorageProbeConfigDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageReportDto": {
+        "type": "object",
+        "properties": {
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePartDto"
+            },
+            "nullable": true
+          },
+          "total_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "free_disk_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageSettingsDto": {
+        "type": "object",
+        "properties": {
+          "database_hour": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed_job_retention_days": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "backup_retain_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "image_cache_max_megabytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "image_cache_orphan_grace_days": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "image_cache_hour": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "backup_prune_hand_made_copies": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageSettingsPatch": {
+        "type": "object",
+        "properties": {
+          "database_hour": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "failed_job_retention_days": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "backup_retain_count": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "image_cache_max_megabytes": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "image_cache_orphan_grace_days": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "image_cache_hour": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "backup_prune_hand_made_copies": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StorageSettingsUpdateResponseDto": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/StorageSettingsDto"
+          },
+          "restart_required": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -17830,6 +18182,9 @@
     },
     {
       "name": "Dashboard Specials"
+    },
+    {
+      "name": "Dashboard Storage"
     },
     {
       "name": "Dashboard Storage Browser"

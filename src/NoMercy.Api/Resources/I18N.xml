@@ -1096,4 +1096,8 @@
     <Key>Cast</Key>
     <Value lang="nl">Cast</Value>
   </Entry>
+  <Entry>
+    <Key>A clean-up or the nightly maintenance is already running.</Key>
+    <Value lang="nl">A clean-up or the nightly maintenance is already running.</Value>
+  </Entry>
 </I18N>
