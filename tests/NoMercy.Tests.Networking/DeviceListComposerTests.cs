@@ -54,6 +54,24 @@ public sealed class DeviceListComposerTests
     }
 
     [Fact]
+    public void Compose_NoBusSocketButOnMusicHub_RowIsOnline()
+    {
+        Device receiver = Registered();
+        Device decoy = Registered("192.168.1.11");
+
+        List<DeviceListItem> result = DeviceListComposer.Compose(
+            [receiver, decoy],
+            _ => false,
+            _ => (false, false),
+            Registry().Object,
+            d => d.Id == receiver.Id
+        );
+
+        Assert.True(result.Single(i => i.DeviceId == receiver.Id).Online);
+        Assert.False(result.Single(i => i.DeviceId == decoy.Id).Online);
+    }
+
+    [Fact]
     public void Compose_NoCastHits_ReturnsOnlyRegisteredRows_FlaggedAsRegistered()
     {
         Device tv = Registered();

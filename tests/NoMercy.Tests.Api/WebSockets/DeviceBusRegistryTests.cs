@@ -21,7 +21,10 @@ using NoMercy.Api.WebSockets;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Devices;
 using NoMercy.Networking.Discovery;
+using NoMercy.Networking.Http;
+using NoMercy.Networking.Messaging;
 using Xunit;
 
 namespace NoMercy.Tests.Api.WebSockets;
@@ -243,6 +246,76 @@ public sealed class DeviceBusRegistryTests : IDisposable
         await using MediaContext context = await _contextFactory.CreateDbContextAsync();
         Device reloaded = await context.Devices.SingleAsync(d => d.Id == device.Id);
         Assert.True(reloaded.WsConnectedAt > stale);
+    }
+
+    private async Task<List<DeviceListItem>> BroadcastedListAsync(
+        Device device,
+        ConnectedClients connectedClients
+    )
+    {
+        List<DeviceListItem>? sent = null;
+        Mock<IClientProxy> proxy = new();
+        proxy
+            .Setup(p =>
+                p.SendCoreAsync(
+                    "DeviceListChanged",
+                    It.IsAny<object?[]>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback<string, object?[], CancellationToken>(
+                (_, args, _) => sent = (List<DeviceListItem>)args[0]!
+            )
+            .Returns(Task.CompletedTask);
+        Mock<IHubClients> clients = new();
+        clients.Setup(c => c.User(device.OwnerUserId!.Value.ToString())).Returns(proxy.Object);
+        _hubContext.Setup(h => h.Clients).Returns(clients.Object);
+        DeviceBusRegistry registry = new(
+            new DeviceStateRepository(_contextFactory),
+            _hubContext.Object,
+            _castMdnsRegistry.Object,
+            connectedClients
+        );
+
+        await registry.BroadcastChange(device.OwnerUserId!.Value);
+
+        return sent!;
+    }
+
+    [Fact]
+    public async Task BroadcastChange_RowWithoutBusSocketButOnMusicHub_IsListedOnline()
+    {
+        Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
+        ConnectedClients connectedClients = new();
+        connectedClients.Clients["conn-1"] = new Client
+        {
+            Id = Ulid.NewUlid(),
+            Sub = Guid.NewGuid(),
+            DeviceId = device.DeviceId,
+            Endpoint = "/musicHub",
+        };
+
+        List<DeviceListItem> items = await BroadcastedListAsync(device, connectedClients);
+
+        items.Should().ContainSingle(i => i.DeviceId == device.Id).Which.Online.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task BroadcastChange_RowWithoutBusSocketAndOnlyAnotherDeviceOnMusicHub_IsListedOffline()
+    {
+        Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
+        ConnectedClients connectedClients = new();
+        connectedClients.Clients["conn-1"] = new Client
+        {
+            Id = Ulid.NewUlid(),
+            Sub = Guid.NewGuid(),
+            DeviceId = $"other-{Guid.NewGuid()}",
+            Endpoint = "/musicHub",
+        };
+
+        List<DeviceListItem> items = await BroadcastedListAsync(device, connectedClients);
+
+        items.Should().ContainSingle(i => i.DeviceId == device.Id).Which.Online.Should().BeFalse();
     }
 
     [Fact]

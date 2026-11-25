@@ -42,7 +42,8 @@ public static class DeviceListComposer
         List<Device> registeredRows,
         Func<Ulid, bool> isOnline,
         Func<Ulid, (bool Foreground, bool ScreenOn)> getStatus,
-        ICastMdnsRegistry castMdnsRegistry
+        ICastMdnsRegistry castMdnsRegistry,
+        Func<Device, bool>? isOnMusicHub = null
     )
     {
         HashSet<string> registeredLanIps =
@@ -63,7 +64,7 @@ public static class DeviceListComposer
                     Fingerprint = d.Fingerprint!,
                     Name = d.CustomName ?? d.Name,
                     Type = d.Type,
-                    Online = isOnline(d.Id),
+                    Online = isOnline(d.Id) || (isOnMusicHub?.Invoke(d) ?? false),
                     LanIp = string.IsNullOrWhiteSpace(d.LanIp)
                         ? CastAddress.Resolve(null, d.Ip)
                         : d.LanIp,

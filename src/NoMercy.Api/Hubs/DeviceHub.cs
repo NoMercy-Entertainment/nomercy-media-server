@@ -137,7 +137,8 @@ public sealed class DeviceHub : ConnectionHub
             rows,
             _busRegistry.IsOnline,
             _busRegistry.GetStatus,
-            _castMdnsRegistry
+            _castMdnsRegistry,
+            _busRegistry.IsOnMusicHub
         );
     }
 
