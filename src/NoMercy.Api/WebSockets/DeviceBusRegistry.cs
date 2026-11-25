@@ -19,13 +19,15 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Devices;
 using NoMercy.Networking.Discovery;
+using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.WebSockets;
 
 public sealed class DeviceBusRegistry(
     IDeviceStateRepository deviceStateRepository,
     IHubContext<DeviceHub> hubContext,
-    ICastMdnsRegistry castMdnsRegistry
+    ICastMdnsRegistry castMdnsRegistry,
+    ConnectedClients? connectedClients = null
 ) : IDeviceListChangeNotifier
 {
     private readonly ConcurrentDictionary<Ulid, WebSocket> _live = new();
@@ -89,6 +91,11 @@ public sealed class DeviceBusRegistry(
 
     public bool IsOnline(Ulid deviceId) =>
         _live.TryGetValue(deviceId, out WebSocket? ws) && ws.State == WebSocketState.Open;
+
+    // The web receiver never joins the device bus; it is reachable on MusicHub.
+    public bool IsOnMusicHub(Device device) =>
+        connectedClients is not null
+        && DeviceBusEndpoint.IsStillOnMusicHub(connectedClients, device.DeviceId);
 
     public async Task<bool> SendAsync(Ulid deviceId, object payload, CancellationToken ct = default)
     {
@@ -171,7 +178,8 @@ public sealed class DeviceBusRegistry(
             rows,
             IsOnline,
             GetStatus,
-            castMdnsRegistry
+            castMdnsRegistry,
+            IsOnMusicHub
         );
 
         await hubContext.Clients.User(ownerUserId.ToString()).SendAsync("DeviceListChanged", items);
