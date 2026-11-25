@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Database;
 using NoMercy.MediaProcessing.Jobs.ChangesJobs;
 using NoMercy.MediaProcessing.Jobs.SegmentJobs;
 using NoMercy.Queue.MediaServer.Jobs;
@@ -23,6 +24,9 @@ public static partial class ServiceConfiguration
     {
         services.AddCronJob<CertificateRenewalCronJob>("certificate-renewal");
         services.AddCronJob<ActivityLogRetentionCronJob>("activity-log-retention");
+        services.AddSingleton<DatabaseMaintenanceSettings>();
+        services.AddSingleton<SqliteCompactor>();
+        services.AddCronJob<DatabaseMaintenanceCronJob>("database-maintenance");
         services.AddCronJob<TmdbChangesCronJob>("tmdb-changes-sync");
         services.AddCronJob<DeviceDropRuleCronJob>("device-drop-rule-job");
         services.AddCronJob<DatabaseBackupCronJob>("database-backup");
