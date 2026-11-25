@@ -30,6 +30,7 @@ public class DatabaseMaintenanceCronJobTests : IDisposable
     );
     private readonly List<SqliteConnection> _connections = [];
     private readonly Dictionary<string, string> _settingValues = [];
+    private readonly MaintenanceGate _gate = new();
 
     public DatabaseMaintenanceCronJobTests()
     {
@@ -101,6 +102,7 @@ public class DatabaseMaintenanceCronJobTests : IDisposable
             queueFactory,
             CreateSettings(),
             new SqliteCompactor(),
+            _gate,
             NullLogger<DatabaseMaintenanceCronJob>.Instance
         );
     }
@@ -193,6 +195,47 @@ public class DatabaseMaintenanceCronJobTests : IDisposable
         new FileInfo(Path.Combine(_directory, "shrink.db"))
             .Length.Should()
             .BeLessThan(sizeBefore / 2);
+    }
+
+    [Fact]
+    public async Task RunAsync_PruneLeavesFreePages_ReportsTheRowsAndBytesFreed()
+    {
+        _settingValues[DatabaseMaintenanceSettings.MinFreeMegabytesKey] = "0";
+        IDbContextFactory<QueueContext> queue = CreateQueueFactory("report.db");
+        for (int i = 0; i < 300; i++)
+            await SeedFailedJobAsync(queue, 60, 3000);
+        await SeedFailedJobAsync(queue, 1);
+
+        DatabaseMaintenanceResult result = await CreateJob(CreateMediaFactory(), queue)
+            .RunAsync(CancellationToken.None);
+
+        result.FailedJobsRemoved.Should().Be(300);
+        result.Queue.Should().NotBeNull();
+        result.Queue!.Compacted.Should().BeTrue();
+        (result.Queue.BytesBefore - result.Queue.BytesAfter)
+            .Should()
+            .BeGreaterThan(result.Queue.BytesBefore / 2);
+        new FileInfo(Path.Combine(_directory, "report.db"))
+            .Length.Should()
+            .Be(result.Queue.BytesAfter);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhileACleanUpHoldsTheGate_WaitsAndPrunesAfterItLeaves()
+    {
+        IDbContextFactory<QueueContext> queue = CreateQueueFactory("gate.db");
+        await SeedFailedJobAsync(queue, 45);
+        IDisposable cleanUp = _gate.TryEnter()!;
+
+        Task nightly = CreateJob(CreateMediaFactory(), queue).ExecuteAsync(string.Empty);
+        await Task.Delay(200);
+        nightly.IsCompleted.Should().BeFalse();
+        (await FailedAgesAsync(queue)).Should().Equal(45);
+
+        cleanUp.Dispose();
+        await nightly.WaitAsync(TimeSpan.FromSeconds(10));
+
+        (await FailedAgesAsync(queue)).Should().BeEmpty();
     }
 
     [Fact]

@@ -35,6 +35,7 @@ public class ImageCacheMaintenanceCronJobTests : IDisposable
     private readonly Dictionary<string, string> _settingValues = [];
     private readonly string _folder = Path.Join(AppFiles.ImagesPath, "original");
     private readonly List<string> _placed = [];
+    private readonly MaintenanceGate _gate = new();
 
     public ImageCacheMaintenanceCronJobTests()
     {
@@ -79,6 +80,7 @@ public class ImageCacheMaintenanceCronJobTests : IDisposable
             new(store.Object),
             new(factory),
             new(storage, NullLogger<ImageCacheSweeper>.Instance),
+            _gate,
             NullLogger<ImageCacheMaintenanceCronJob>.Instance
         );
     }
@@ -130,6 +132,36 @@ public class ImageCacheMaintenanceCronJobTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_RemovesAnOrphan_ReportsItsBytes()
+    {
+        string orphan = Place($"{Guid.NewGuid():N}-orphan.jpg", 60, 123_457);
+
+        ImageCacheSweepResult? result = await CreateJob().RunAsync(CancellationToken.None);
+
+        File.Exists(orphan).Should().BeFalse();
+        result.Should().NotBeNull();
+        result!.OrphansRemoved.Should().BeGreaterThanOrEqualTo(1);
+        result.OrphanBytes.Should().BeGreaterThanOrEqualTo(123_457);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhileACleanUpHoldsTheGate_WaitsAndSweepsAfterItLeaves()
+    {
+        string orphan = Place($"{Guid.NewGuid():N}-orphan.jpg", 60);
+        IDisposable cleanUp = _gate.TryEnter()!;
+
+        Task nightly = CreateJob().ExecuteAsync(string.Empty);
+        await Task.Delay(200);
+        nightly.IsCompleted.Should().BeFalse();
+        File.Exists(orphan).Should().BeTrue();
+
+        cleanUp.Dispose();
+        await nightly.WaitAsync(TimeSpan.FromSeconds(10));
+
+        File.Exists(orphan).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_OverTheConfiguredLimit_EvictsTheLeastRecentlyUsedImage()
     {
         string tag = Guid.NewGuid().ToString("N");
@@ -167,6 +199,7 @@ public class ImageCacheMaintenanceCronJobTests : IDisposable
             new(store.Object),
             new(broken.Object),
             new(storage, NullLogger<ImageCacheSweeper>.Instance),
+            _gate,
             NullLogger<ImageCacheMaintenanceCronJob>.Instance
         );
 

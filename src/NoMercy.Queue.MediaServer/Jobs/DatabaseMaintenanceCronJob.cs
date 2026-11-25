@@ -22,21 +22,37 @@ public class DatabaseMaintenanceCronJob(
     IDbContextFactory<QueueContext> queueContextFactory,
     DatabaseMaintenanceSettings settings,
     SqliteCompactor compactor,
+    MaintenanceGate gate,
     ILogger<DatabaseMaintenanceCronJob> logger
-) : ICronJobExecutor
+) : ICronJobExecutor, IMaintenancePass<DatabaseMaintenanceResult>
 {
     public string CronExpression => new CronExpressionBuilder().Daily(settings.Hour, 30);
     public string JobName => "Database Maintenance";
 
     public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken = default)
     {
-        await PruneFailedJobsAsync(cancellationToken);
-
-        await CompactAsync("media.db", mediaContextFactory, cancellationToken);
-        await CompactAsync("queue.db", queueContextFactory, cancellationToken);
+        using IDisposable lease = await gate.EnterAsync(cancellationToken);
+        await RunAsync(cancellationToken);
     }
 
-    private async Task PruneFailedJobsAsync(CancellationToken cancellationToken)
+    public async Task<DatabaseMaintenanceResult> RunAsync(CancellationToken cancellationToken)
+    {
+        int removed = await PruneFailedJobsAsync(cancellationToken);
+
+        SqliteCompactionResult? media = await CompactAsync(
+            "media.db",
+            mediaContextFactory,
+            cancellationToken
+        );
+        SqliteCompactionResult? queue = await CompactAsync(
+            "queue.db",
+            queueContextFactory,
+            cancellationToken
+        );
+        return new(removed, media, queue);
+    }
+
+    private async Task<int> PruneFailedJobsAsync(CancellationToken cancellationToken)
     {
         DateTime cutoff = DateTime.UtcNow - settings.FailedJobRetention;
 
@@ -54,14 +70,16 @@ public class DatabaseMaintenanceCronJob(
                 deleted,
                 cutoff
             );
+            return deleted;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Failed job prune failed: {Reason}", exception.Message);
+            return 0;
         }
     }
 
-    private async Task CompactAsync<TContext>(
+    private async Task<SqliteCompactionResult?> CompactAsync<TContext>(
         string name,
         IDbContextFactory<TContext> factory,
         CancellationToken cancellationToken
@@ -88,6 +106,7 @@ public class DatabaseMaintenanceCronJob(
                 result.BytesAfter,
                 result.FreeBytesBefore
             );
+            return result;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -97,6 +116,7 @@ public class DatabaseMaintenanceCronJob(
                 name,
                 exception.Message
             );
+            return null;
         }
     }
 }

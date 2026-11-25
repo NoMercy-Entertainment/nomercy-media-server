@@ -20,13 +20,21 @@ public class ImageCacheMaintenanceCronJob(
     ImageCacheSettings settings,
     ImageReferenceReader referenceReader,
     ImageCacheSweeper sweeper,
+    MaintenanceGate gate,
     ILogger<ImageCacheMaintenanceCronJob> logger
-) : ICronJobExecutor
+) : ICronJobExecutor, IMaintenancePass<ImageCacheSweepResult?>
 {
     public string CronExpression => new CronExpressionBuilder().Daily(settings.Hour);
     public string JobName => "Image Cache Maintenance";
 
     public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken = default)
+    {
+        using IDisposable lease = await gate.EnterAsync(cancellationToken);
+        await RunAsync(cancellationToken);
+    }
+
+    /// <returns>What the pass removed; null when it failed.</returns>
+    public async Task<ImageCacheSweepResult?> RunAsync(CancellationToken cancellationToken)
     {
         // A failed pass must not fail the cron worker; the next night tries again.
         try
@@ -50,10 +58,12 @@ public class ImageCacheMaintenanceCronJob(
                 result.EvictedBytes,
                 result.BytesAfter
             );
+            return result;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogError(exception, "Image cache sweep failed: {Reason}", exception.Message);
+            return null;
         }
     }
 }

@@ -24,6 +24,9 @@ public interface IBackupService
     /// </summary>
     Task<BackupSetSummary> CreateAsync(string reason, CancellationToken cancellationToken);
 
+    /// <summary>Prunes now, the way every backup does after it is written.</summary>
+    Task<BackupPruneResult> PruneAsync(CancellationToken cancellationToken);
+
     /// <summary>The published sets, newest first.</summary>
     Task<IReadOnlyList<BackupSetSummary>> ListAsync(CancellationToken cancellationToken);
 

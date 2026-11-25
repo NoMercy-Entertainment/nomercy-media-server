@@ -24,7 +24,7 @@ namespace NoMercy.Data.ServerBackups;
 /// still holds those.
 /// </para>
 /// </summary>
-internal static partial class DatabaseCopyName
+public static partial class DatabaseCopyName
 {
     private const string StampFormat = "yyyyMMddHHmmss";
 

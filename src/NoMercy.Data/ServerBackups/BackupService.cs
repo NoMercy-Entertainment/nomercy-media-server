@@ -49,7 +49,7 @@ public sealed class BackupService(
                 manifest.Id,
                 manifest.Reason
             );
-            await PruneAsync(cancellationToken);
+            await PruneCoreAsync(cancellationToken);
             return BackupSetSummary.From(manifest);
         }
         finally
@@ -118,7 +118,7 @@ public sealed class BackupService(
                 backupId,
                 safety.Id
             );
-            await PruneAsync(CancellationToken.None);
+            await PruneCoreAsync(CancellationToken.None);
             return new(RestoreScheduleStatus.Scheduled, [], pending);
         }
         finally
@@ -174,8 +174,23 @@ public sealed class BackupService(
     /// a restore still needs, and clears any folder a crashed backup left half
     /// built. Runs under the gate, so no set is being built while it looks.
     /// </summary>
-    private async Task PruneAsync(CancellationToken cancellationToken)
+    public async Task<BackupPruneResult> PruneAsync(CancellationToken cancellationToken)
     {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await PruneCoreAsync(cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<BackupPruneResult> PruneCoreAsync(CancellationToken cancellationToken)
+    {
+        int setsRemoved = 0;
+        long setBytes = 0;
         try
         {
             HashSet<string> kept = await ProtectedSetIdsAsync(cancellationToken);
@@ -196,18 +211,30 @@ public sealed class BackupService(
                 .Concat(prunable.Where(damaged.Contains).Skip(retain));
             foreach (string id in pruned.ToList())
             {
-                storage.DeleteDirectory(Path.Combine(options.SetsRoot, id), recursive: true);
+                string folder = Path.Combine(options.SetsRoot, id);
+                long bytes = FolderBytes(folder);
+                storage.DeleteDirectory(folder, recursive: true);
+                setsRemoved++;
+                setBytes += bytes;
                 logger.LogInformation("Pruned old backup {BackupId}", id);
             }
 
-            ClearHalfBuiltSets();
-            await PruneSupersededCopiesAsync(cancellationToken);
+            setBytes += ClearHalfBuiltSets();
+            (int copies, long copyBytes) = await PruneSupersededCopiesAsync(cancellationToken);
+            return new(setsRemoved, setBytes, copies, copyBytes);
         }
         catch (Exception exception)
         {
             logger.LogWarning("Backup pruning failed: {Reason}", exception.Message);
+            return new(setsRemoved, setBytes, 0, 0);
         }
     }
+
+    private long FolderBytes(string folder) =>
+        storage
+            .EnumerateEntries(folder, "*", SearchOption.AllDirectories)
+            .Where(entry => !entry.IsDirectory)
+            .Sum(entry => entry.Size);
 
     /// <summary>
     /// Writes a set, after first giving back what the backups folder holds for
@@ -276,7 +303,8 @@ public sealed class BackupService(
         storage.FileExists(path) ? storage.GetFileSize(path) : 0;
 
     /// <summary>Removes every folder a backup that failed or was cut short left half built.</summary>
-    private void ClearHalfBuiltSets()
+    /// <returns>The bytes the folders held.</returns>
+    private long ClearHalfBuiltSets()
     {
         List<string> leftovers = storage
             .EnumerateFileSystemEntries(
@@ -286,8 +314,14 @@ public sealed class BackupService(
             )
             .Where(storage.DirectoryExists)
             .ToList();
+        long bytes = 0;
         foreach (string leftover in leftovers)
+        {
+            bytes += FolderBytes(leftover);
             storage.DeleteDirectory(leftover, recursive: true);
+        }
+
+        return bytes;
     }
 
     /// <summary>
@@ -304,10 +338,12 @@ public sealed class BackupService(
     /// be the last state from before an update.
     /// </para>
     /// </summary>
-    private async Task PruneSupersededCopiesAsync(CancellationToken cancellationToken)
+    private async Task<(int Removed, long Bytes)> PruneSupersededCopiesAsync(
+        CancellationToken cancellationToken
+    )
     {
         if (!storage.DirectoryExists(options.SetsRoot))
-            return;
+            return (0, 0);
 
         List<string> goodSets = [];
         foreach (string id in ListSetIds())
@@ -321,7 +357,7 @@ public sealed class BackupService(
         }
 
         if (goodSets.Count == 0)
-            return;
+            return (0, 0);
 
         string oldestKept = DatabaseCopyName.StampOfSet(goodSets[^1]);
         HashSet<string> databases = options
@@ -369,6 +405,8 @@ public sealed class BackupService(
                 removed,
                 bytes
             );
+
+        return (removed, bytes);
     }
 
     private List<string> HandMadeCopies(HashSet<string> databases) =>
