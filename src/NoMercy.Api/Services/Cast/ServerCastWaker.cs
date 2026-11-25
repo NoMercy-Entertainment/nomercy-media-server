@@ -55,7 +55,9 @@ public class ServerCastWaker(
         bool useAndroidReceiver = true
     )
     {
-        string? targetIp = CastAddress.Resolve(tv.LanIp, tv.Ip);
+        string? targetIp = busRegistry is null
+            ? CastAddress.Resolve(tv.LanIp, tv.Ip)
+            : busRegistry.ResolveCastAddress(tv);
         if (targetIp is null)
         {
             logger.LogWarning(

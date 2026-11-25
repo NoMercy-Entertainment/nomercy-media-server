@@ -10,6 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
+using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Discovery;
 using NoMercy.Networking.Http;
 
 namespace NoMercy.Networking.Cast;
@@ -30,6 +32,32 @@ public static class CastAddress
             return lanIp;
 
         return IsOnThisNetwork(connectedFromIp) ? connectedFromIp : null;
+    }
+
+    // LanIp, then Ip, then the one Cast mDNS hit named like the row; two hits is a guess.
+    public static string? ResolveForDevice(Device tv, IEnumerable<CastMdnsHit>? seen)
+    {
+        string? known = Resolve(tv.LanIp, tv.Ip);
+        if (known is not null || seen is null)
+            return known;
+
+        string?[] names = [tv.CustomName?.Trim(), tv.Name?.Trim()];
+        List<CastMdnsHit> matches =
+        [
+            .. seen.Where(hit =>
+                !string.IsNullOrWhiteSpace(hit.FriendlyName)
+                && names.Any(name =>
+                    !string.IsNullOrEmpty(name)
+                    && string.Equals(
+                        hit.FriendlyName!.Trim(),
+                        name,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+            ),
+        ];
+
+        return matches.Count == 1 && IsOnThisNetwork(matches[0].Ip) ? matches[0].Ip : null;
     }
 
     public static bool IsOnThisNetwork(string? ip)

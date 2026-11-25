@@ -294,7 +294,7 @@ public partial class MusicHub
             // Cast mDNS name (set in Android TV settings) doesn't match our DB's
             // custom name (set in NoMercy onboarding). Best-effort, async — some
             // cast_shell builds don't honor third-party LAUNCHes.
-            string? targetIp = CastAddress.Resolve(targetTv.LanIp, targetTv.Ip);
+            string? targetIp = _busRegistry.ResolveCastAddress(targetTv);
             Ulid targetUlid = targetTv.Id;
             string serverIdString = Info.DeviceId.ToString();
             string serverUrl = CastLaunchOrigin.ServerUrl(_networkDiscovery);
