@@ -10,11 +10,16 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using NoMercy.Api.Hubs;
 using NoMercy.Api.Services.Cast;
+using NoMercy.Api.WebSockets;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
+using NoMercy.Networking.Discovery;
 using NoMercy.Setup.Cast;
 using Xunit;
 
@@ -87,6 +92,54 @@ public class ServerCastWakerTests
         chromeCast.Verify(
             c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), It.IsAny<bool>()),
             Times.Once
+        );
+    }
+
+    // A TV the NoMercy app never announced (no LanIp, no Ip) is found only by its Cast
+    // name. It has no NoMercy app, so the Web Receiver starts at once, not after the
+    // Cast Connect timeout.
+    [Fact]
+    public async Task WakeAsync_TvFoundOnlyByCastName_LaunchesTheWebReceiverAtOnce()
+    {
+        Mock<IChromeCastService> chromeCast = new();
+        Mock<ICastMdnsRegistry> mdns = new();
+        mdns.Setup(m => m.GetSeen())
+            .Returns([
+                new CastMdnsHit("cast-1", "Test Room TV", "Chromecast", TvIp, DateTime.UtcNow),
+            ]);
+        DeviceBusRegistry busRegistry = new(
+            Mock.Of<IDeviceStateRepository>(),
+            Mock.Of<IHubContext<DeviceHub>>(),
+            mdns.Object
+        );
+        ServerCastWaker waker = new(
+            new CastPanelWakeLauncher(
+                chromeCast.Object,
+                NullLogger<CastPanelWakeLauncher>.Instance
+            ),
+            new CastSessionTokenService(),
+            new HttpContextAccessor(),
+            NullLogger<ServerCastWaker>.Instance,
+            busRegistry: busRegistry
+        );
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TvIp)).ReturnsAsync("Test Room TV");
+        Device tv = new()
+        {
+            Id = Ulid.NewUlid(),
+            Name = "Test Room TV",
+            Type = "tv",
+        };
+
+        bool dispatched = await waker.WakeAsync(tv, Guid.NewGuid(), CastIntent.Idle(), null);
+
+        dispatched.Should().BeTrue();
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), false),
+            Times.Once
+        );
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), true),
+            Times.Never
         );
     }
 }

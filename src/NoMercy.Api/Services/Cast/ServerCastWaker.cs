@@ -86,7 +86,11 @@ public class ServerCastWaker(
         CastLaunchOutcome outcome = await launcher.LaunchIfColdAsync(
             targetIsLive: false,
             targetIp: targetIp,
-            useAndroidReceiver: useAndroidReceiver,
+            // A TV found only by its Cast name never announced the NoMercy app, so
+            // it has none: start the Web Receiver at once, not after the Cast
+            // Connect timeout.
+            useAndroidReceiver: useAndroidReceiver
+                && CastAddress.Resolve(tv.LanIp, tv.Ip) is not null,
             isAppOnlineNow: busRegistry is null ? null : () => busRegistry.IsOnline(deviceId),
             resolveLaunchData: () =>
                 tokens.MintAsync(
