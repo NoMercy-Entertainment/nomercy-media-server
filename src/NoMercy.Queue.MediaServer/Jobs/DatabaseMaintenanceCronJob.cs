@@ -95,17 +95,24 @@ public class DatabaseMaintenanceCronJob(
                 context.Database.GetDbConnection(),
                 settings.MinFreeRatio,
                 settings.MinFreeBytes,
+                settings.CheckpointWait,
                 cancellationToken
             );
 
             logger.LogInformation(
-                "Database compaction {Name}: compacted {Compacted}, {Before} bytes to {After} bytes ({Free} bytes were free)",
+                "Database compaction {Name}: compacted {Compacted}, {Before} bytes to {After} bytes on disk ({Free} bytes were free)",
                 name,
                 result.Compacted,
                 result.BytesBefore,
                 result.BytesAfter,
                 result.FreeBytesBefore
             );
+            if (result.CheckpointBlocked)
+                logger.LogWarning(
+                    "Database compaction {Name}: a running read kept the file from shrinking for {Wait}; the space returns once it ends",
+                    name,
+                    settings.CheckpointWait
+                );
             return result;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)

@@ -180,6 +180,22 @@ public class DatabaseMaintenanceCronJobTests : IDisposable
     }
 
     [Fact]
+    public void CheckpointWait_SettingChanged_UsesTheConfiguredSeconds()
+    {
+        CreateSettings()
+            .CheckpointWait.Should()
+            .Be(TimeSpan.FromSeconds(DatabaseMaintenanceSettings.DefaultCheckpointWaitSeconds));
+
+        _settingValues[DatabaseMaintenanceSettings.CheckpointWaitSecondsKey] = "5";
+        CreateSettings().CheckpointWait.Should().Be(TimeSpan.FromSeconds(5));
+
+        _settingValues[DatabaseMaintenanceSettings.CheckpointWaitSecondsKey] = "later";
+        CreateSettings()
+            .CheckpointWait.Should()
+            .Be(TimeSpan.FromSeconds(DatabaseMaintenanceSettings.DefaultCheckpointWaitSeconds));
+    }
+
+    [Fact]
     public async Task ExecuteAsync_PruneLeavesFreePages_ShrinksTheQueueDatabaseFile()
     {
         _settingValues[DatabaseMaintenanceSettings.MinFreeMegabytesKey] = "0";

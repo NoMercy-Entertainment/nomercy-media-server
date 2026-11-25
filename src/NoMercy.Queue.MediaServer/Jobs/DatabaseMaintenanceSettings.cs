@@ -22,6 +22,9 @@ public class DatabaseMaintenanceSettings(IConfigurationStore configurationStore)
     public const string MinFreePercentKey = "maintenance.database.min_free_percent";
     public const string MinFreeMegabytesKey = "maintenance.database.min_free_megabytes";
 
+    public const string CheckpointWaitSecondsKey = "maintenance.database.checkpoint_wait_seconds";
+
+    public const int DefaultCheckpointWaitSeconds = 60;
     public const int DefaultHour = 3;
     public const int DefaultFailedJobRetentionDays = 30;
     public const int DefaultMinFreePercent = 10;
@@ -35,6 +38,11 @@ public class DatabaseMaintenanceSettings(IConfigurationStore configurationStore)
         TimeSpan.FromDays(ReadInt(FailedJobRetentionDaysKey, DefaultFailedJobRetentionDays, 1));
 
     public double MinFreeRatio => ReadInt(MinFreePercentKey, DefaultMinFreePercent, 0, 100) / 100.0;
+
+    public TimeSpan CheckpointWait =>
+        TimeSpan.FromSeconds(
+            ReadInt(CheckpointWaitSecondsKey, DefaultCheckpointWaitSeconds, 0, 3600)
+        );
 
     public long MinFreeBytes =>
         ReadInt(MinFreeMegabytesKey, DefaultMinFreeMegabytes, 0) * BytesPerMegabyte;

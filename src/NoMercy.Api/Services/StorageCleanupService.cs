@@ -51,6 +51,5 @@ public sealed class StorageCleanupService(
         );
     }
 
-    private static long Freed(SqliteCompactionResult? result) =>
-        result is null ? 0 : result.BytesBefore - result.BytesAfter;
+    private static long Freed(SqliteCompactionResult? result) => result?.FreedBytes ?? 0;
 }
