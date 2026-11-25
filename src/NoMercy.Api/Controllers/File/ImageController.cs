@@ -108,6 +108,7 @@ public class ImageController(
                 return ImageMiss("Image not found");
 
             CacheForThirtyDays();
+            storage.TryTouch(filePath);
 
             long originalFileSize = storage.Size(filePath);
             string originalMimeType = MimeUtility.GetMimeMapping(filePath);
@@ -132,7 +133,10 @@ public class ImageController(
 
             string cachedImagePath = Path.Join(AppFiles.TempImagesPath, hashedUrl);
             if (storage.Exists(cachedImagePath))
+            {
+                storage.TryTouch(cachedImagePath);
                 return PhysicalFile(cachedImagePath, RequestedMimeType(request));
+            }
 
             try
             {

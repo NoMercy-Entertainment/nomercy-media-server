@@ -27,6 +27,10 @@ public static partial class ServiceConfiguration
         services.AddSingleton<DatabaseMaintenanceSettings>();
         services.AddSingleton<SqliteCompactor>();
         services.AddCronJob<DatabaseMaintenanceCronJob>("database-maintenance");
+        services.AddSingleton<ImageCacheSettings>();
+        services.AddSingleton<ImageReferenceReader>();
+        services.AddSingleton<ImageCacheSweeper>();
+        services.AddCronJob<ImageCacheMaintenanceCronJob>("image-cache-maintenance");
         services.AddCronJob<TmdbChangesCronJob>("tmdb-changes-sync");
         services.AddCronJob<DeviceDropRuleCronJob>("device-drop-rule-job");
         services.AddCronJob<DatabaseBackupCronJob>("database-backup");

@@ -181,6 +181,9 @@ public interface IStorageDriver
     /// </summary>
     bool TryMarkSparse(string path) => false;
 
+    /// <summary>Sets a file's last-write time to now (atime is unreliable). False when missing or not local.</summary>
+    bool TryTouch(string path) => false;
+
     /// <summary>
     /// Limits a file to its owner (0600) or a folder to its owner (0700), for data
     /// such as backups that hold credentials. Best effort: true when the mode was

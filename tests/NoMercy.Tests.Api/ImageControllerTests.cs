@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
+using ImageMagick;
 using NoMercy.NmSystem.Information;
 using NoMercy.Tests.Api.Infrastructure;
-using ImageMagick;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -101,6 +101,50 @@ public class ImageControllerTests : IClassFixture<NoMercyApiFactory>, IDisposabl
         );
         byte[] responseBytes = await response.Content.ReadAsByteArrayAsync();
         Assert.Equal(originalBytes.Length, responseBytes.Length);
+    }
+
+    [Fact]
+    public async Task Image_Served_MarksTheFileAsRecentlyUsed()
+    {
+        string imagePath = Path.Join(_testTypeFolder, _testImageName);
+        File.SetLastWriteTimeUtc(imagePath, DateTime.UtcNow.AddDays(-30));
+
+        HttpResponseMessage response = await _client.GetAsync($"/images/testtype/{_testImageName}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            DateTime.UtcNow - File.GetLastWriteTimeUtc(imagePath) < TimeSpan.FromMinutes(5)
+        );
+    }
+
+    [Fact]
+    public async Task Image_ServedFromTheRenditionCache_MarksTheRenditionAndTheOriginalAsRecentlyUsed()
+    {
+        string imagePath = Path.Join(_testTypeFolder, _testImageName);
+        HttpResponseMessage first = await _client.GetAsync(
+            $"/images/testtype/{_testImageName}?width=50"
+        );
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        DateTime longAgo = DateTime.UtcNow.AddDays(-30);
+        File.SetLastWriteTimeUtc(imagePath, longAgo);
+        foreach (string rendition in Directory.GetFiles(AppFiles.TempImagesPath))
+            File.SetLastWriteTimeUtc(rendition, longAgo);
+
+        using HttpRequestMessage secondRequest = new(
+            HttpMethod.Get,
+            $"/images/testtype/{_testImageName}?width=50"
+        );
+        secondRequest.Headers.CacheControl = new() { NoCache = true };
+        HttpResponseMessage second = await _client.SendAsync(secondRequest);
+
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.True(
+            DateTime.UtcNow - File.GetLastWriteTimeUtc(imagePath) < TimeSpan.FromMinutes(5)
+        );
+        foreach (string rendition in Directory.GetFiles(AppFiles.TempImagesPath))
+            Assert.True(
+                DateTime.UtcNow - File.GetLastWriteTimeUtc(rendition) < TimeSpan.FromMinutes(5)
+            );
     }
 
     [Fact]

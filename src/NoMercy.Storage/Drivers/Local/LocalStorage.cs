@@ -307,6 +307,8 @@ public sealed class LocalStorage : IStorage
     // refused, not marked.
     bool IStorage.TryMarkSparse(string path) => _driver.TryMarkSparse(ValidateScoped(path));
 
+    bool IStorage.TryTouch(string path) => _driver.TryTouch(ValidateScoped(path));
+
     private void EnsureParentDirectory(string path)
     {
         string? parent = Path.GetDirectoryName(path);

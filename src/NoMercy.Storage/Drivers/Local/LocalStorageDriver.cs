@@ -189,6 +189,22 @@ public sealed class LocalStorageDriver : IStorageDriver
 
     public bool TryMarkSparse(string path) => SparseFile.TryMark(path);
 
+    public bool TryTouch(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+
+        try
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     public void ReplaceFile(string source, string destination)
     {
         ServerWriteLedger.Shared.Note(Path.GetFullPath(source));
