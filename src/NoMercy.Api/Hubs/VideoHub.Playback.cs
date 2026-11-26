@@ -656,9 +656,7 @@ public partial class VideoHub
         // A TV only ever seen from outside this network has no address a Cast LAUNCH could
         // reach, so the panel wake is skipped — never the handoff itself, which is what the
         // rest of this method performs.
-        string? targetIp = targetTv is null
-            ? null
-            : CastAddress.Resolve(targetTv.LanIp, targetTv.Ip);
+        string? targetIp = targetTv is null ? null : _busRegistry.ResolveCastAddress(targetTv);
 
         if (targetTv is not null && targetIp is null)
             _logger.LogWarning(
@@ -731,7 +729,8 @@ public partial class VideoHub
                     .FirstOrDefault(d =>
                         d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
                     )
-                    ?.VolumePercent ?? Device.DefaultVolumePercent
+                    ?.VolumePercent
+                    ?? Device.DefaultVolumePercent
             );
             _videoPlayerStateManager.UpdateState(user.Id, claimed);
             await _videoPlaybackService.UpdatePlaybackState(user, claimed);

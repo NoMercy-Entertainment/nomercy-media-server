@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.SignalR;
 using NoMercy.Api.Hubs;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Cast;
 using NoMercy.Networking.Devices;
 using NoMercy.Networking.Discovery;
 using NoMercy.Networking.Messaging;
@@ -42,6 +43,9 @@ public sealed class DeviceBusRegistry(
     {
         _status[deviceId] = (foreground, screenOn);
     }
+
+    public string? ResolveCastAddress(Device tv) =>
+        CastAddress.ResolveForDevice(tv, castMdnsRegistry.GetSeen());
 
     public (bool Foreground, bool ScreenOn) GetStatus(Ulid deviceId) =>
         _status.TryGetValue(deviceId, out (bool Foreground, bool ScreenOn) s) ? s : (false, false);

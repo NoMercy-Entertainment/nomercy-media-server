@@ -9,7 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
+using NoMercy.Networking.Discovery;
 using Xunit;
 
 namespace NoMercy.Tests.Networking;
@@ -67,6 +69,103 @@ public sealed class CastAddressTests
     public void Resolve_GarbageInEitherColumn_YieldsNoAddress()
     {
         Assert.Null(CastAddress.Resolve("not-an-ip", "also-not-an-ip"));
+    }
+
+    private static CastMdnsHit Hit(string id, string? friendlyName, string ip) =>
+        new(id, friendlyName, "Chromecast", ip, DateTime.UtcNow);
+
+    private static Device Tv(string name, string? customName, string? lanIp, string ip) =>
+        new()
+        {
+            Id = Ulid.NewUlid(),
+            Name = name,
+            CustomName = customName,
+            LanIp = lanIp,
+            Ip = ip,
+        };
+
+    [Fact]
+    public void ResolveWithSeen_NoAddressOnRow_UsesTheCastHitWithTheSameFriendlyName()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [Hit("a", "Tv in woonkamer", "192.168.2.21"), Hit("b", "Bedroom", "192.168.2.80")]
+        );
+
+        Assert.Equal("192.168.2.21", address);
+    }
+
+    [Fact]
+    public void ResolveWithSeen_CustomNameMatchesCaseAndPaddingInsensitively()
+    {
+        Device tv = Tv("Android TV", "  Living Room ", null, "203.0.113.7");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [Hit("a", "living room", "192.168.2.21")]
+        );
+
+        Assert.Equal("192.168.2.21", address);
+    }
+
+    [Fact]
+    public void ResolveWithSeen_TwoHitsShareTheName_YieldsNoAddress()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [
+                Hit("a", "Tv in woonkamer", "192.168.2.21"),
+                Hit("b", "Tv in woonkamer", "192.168.2.22"),
+            ]
+        );
+
+        Assert.Null(address);
+    }
+
+    [Fact]
+    public void ResolveWithSeen_NoHitHasTheName_YieldsNoAddress()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        Assert.Null(CastAddress.ResolveForDevice(tv, [Hit("a", "Bedroom", "192.168.2.80")]));
+    }
+
+    [Fact]
+    public void ResolveWithSeen_LanIpOnRow_WinsOverAMatchingHit()
+    {
+        Device tv = Tv("Tv in woonkamer", null, "192.168.2.31", "");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [Hit("a", "Tv in woonkamer", "192.168.2.21")]
+        );
+
+        Assert.Equal("192.168.2.31", address);
+    }
+
+    [Fact]
+    public void ResolveWithSeen_IpOnRowFromThisNetwork_WinsOverAMatchingHit()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "192.168.2.40");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [Hit("a", "Tv in woonkamer", "192.168.2.21")]
+        );
+
+        Assert.Equal("192.168.2.40", address);
+    }
+
+    [Fact]
+    public void ResolveWithSeen_MatchingHitOnAPublicAddress_YieldsNoAddress()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        Assert.Null(CastAddress.ResolveForDevice(tv, [Hit("a", "Tv in woonkamer", "8.8.8.8")]));
     }
 
     [Theory]
