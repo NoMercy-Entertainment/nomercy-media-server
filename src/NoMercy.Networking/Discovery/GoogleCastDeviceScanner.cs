@@ -184,6 +184,17 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
         ];
     }
 
+    public IReadOnlyCollection<CastMdnsHit> GetLastKnown() =>
+        [
+            .. _seen.Select(kv => new CastMdnsHit(
+                kv.Key,
+                kv.Value.FriendlyName,
+                kv.Value.Model,
+                kv.Value.Ip,
+                kv.Value.SeenAt
+            )),
+        ];
+
     private void OnInstanceDiscovered(object? sender, ServiceInstanceDiscoveryEventArgs e)
     {
         try

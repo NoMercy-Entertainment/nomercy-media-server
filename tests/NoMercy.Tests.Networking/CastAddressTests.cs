@@ -127,6 +127,59 @@ public sealed class CastAddressTests
     }
 
     [Fact]
+    public void ResolveWithLastKnown_NoFreshHit_UsesTheStaleHitOfTheSameName()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [],
+            [Hit("a", "Tv in woonkamer", "192.168.2.21"), Hit("b", "Bedroom", "192.168.2.80")]
+        );
+
+        Assert.Equal("192.168.2.21", address);
+    }
+
+    [Fact]
+    public void ResolveWithLastKnown_TwoStaleHitsShareTheName_YieldsNoAddress()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [],
+            [
+                Hit("a", "Tv in woonkamer", "192.168.2.21"),
+                Hit("b", "Tv in woonkamer", "192.168.2.22"),
+            ]
+        );
+
+        Assert.Null(address);
+    }
+
+    [Fact]
+    public void ResolveWithLastKnown_FreshHitWinsOverAStaleOne()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        string? address = CastAddress.ResolveForDevice(
+            tv,
+            [Hit("a", "Tv in woonkamer", "192.168.2.21")],
+            [Hit("b", "Tv in woonkamer", "192.168.2.22")]
+        );
+
+        Assert.Equal("192.168.2.21", address);
+    }
+
+    [Fact]
+    public void ResolveWithLastKnown_StaleHitOnAPublicAddress_YieldsNoAddress()
+    {
+        Device tv = Tv("Tv in woonkamer", null, null, "");
+
+        Assert.Null(CastAddress.ResolveForDevice(tv, [], [Hit("a", "Tv in woonkamer", "8.8.8.8")]));
+    }
+
+    [Fact]
     public void ResolveWithSeen_NoHitHasTheName_YieldsNoAddress()
     {
         Device tv = Tv("Tv in woonkamer", null, null, "");
