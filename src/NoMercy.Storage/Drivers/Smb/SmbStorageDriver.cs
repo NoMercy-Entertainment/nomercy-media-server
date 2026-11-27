@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -35,8 +36,16 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
     private readonly SmbDriverConfig _config;
     private readonly ILogger _log;
     private readonly Func<SmbSession> _connect;
-    private readonly object _lock = new();
-    private bool _disposed;
+    private readonly ConcurrentBag<(SmbSession Session, long IdleSince)> _idle = new();
+    private volatile bool _disposed;
+
+    // Logged-in sessions kept for the next call; each connect is a TCP handshake, a
+    // login and a share connect, which put seconds in front of every served segment.
+    internal int MaxIdleSessions { get; set; } = 4;
+
+    // An idle session older than this is dropped instead of reused: the NAS may
+    // have closed it.
+    internal TimeSpan SessionIdleLimit { get; set; } = TimeSpan.FromSeconds(60);
 
     // Per-request transfer size handed to the read/write streams, clamped by the
     // SMB2 client's negotiated MaxRead/WriteSize. Defaults to the streams' own
@@ -128,12 +137,42 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
             ) ?? addresses.First();
     }
 
+    private SmbSession Rent()
+    {
+        long now = Environment.TickCount64;
+        while (_idle.TryTake(out (SmbSession Session, long IdleSince) idle))
+        {
+            if (now - idle.IdleSince <= (long)SessionIdleLimit.TotalMilliseconds)
+                return idle.Session;
+            idle.Session.Dispose();
+        }
+        return _connect();
+    }
+
+    // A session goes back only after a clean call; one that threw may be broken.
+    private void Release(SmbSession session, bool healthy)
+    {
+        if (healthy && !_disposed && _idle.Count < MaxIdleSessions)
+        {
+            _idle.Add((session, Environment.TickCount64));
+            return;
+        }
+        session.Dispose();
+    }
+
     private T WithSession<T>(Func<SmbSession, T> action)
     {
-        lock (_lock)
+        SmbSession session = Rent();
+        bool healthy = false;
+        try
         {
-            using SmbSession session = _connect();
-            return action(session);
+            T result = action(session);
+            healthy = true;
+            return result;
+        }
+        finally
+        {
+            Release(session, healthy);
         }
     }
 
@@ -227,18 +266,17 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
 
     public Stream OpenRead(string path)
     {
-        // A dedicated connection + open handle streamed for the caller's lifetime
-        // (not under the shared metadata lock, and not buffered in memory) — a
-        // multi-GB media read stays flat in memory. The stream owns the session.
-        SmbSession session = _connect();
+        // The stream holds its session alone for its lifetime (a multi-GB read stays
+        // flat in memory) and hands it back to the pool when it is closed.
+        SmbSession session = Rent();
         try
         {
             OpenForRead(session, ToSmbPath(path), out object handle);
-            return new SmbReadStream(session, handle, path, StreamChunkSize);
+            return new SmbReadStream(session, handle, path, StreamChunkSize, Release);
         }
         catch
         {
-            session.Dispose();
+            Release(session, healthy: false);
             throw;
         }
     }
@@ -592,5 +630,7 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         if (_disposed)
             return;
         _disposed = true;
+        while (_idle.TryTake(out (SmbSession Session, long IdleSince) idle))
+            idle.Session.Dispose();
     }
 }

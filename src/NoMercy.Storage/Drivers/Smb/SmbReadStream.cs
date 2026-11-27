@@ -31,6 +31,7 @@ internal sealed class SmbReadStream : Stream
 
     private readonly int _chunkSize;
     private readonly SmbSession _session;
+    private readonly Action<SmbSession, bool>? _release;
     private readonly object _handle;
     private readonly string _path;
     private long _serverOffset;
@@ -43,10 +44,12 @@ internal sealed class SmbReadStream : Stream
         SmbSession session,
         object handle,
         string path,
-        int chunkSize = DefaultChunkSize
+        int chunkSize = DefaultChunkSize,
+        Action<SmbSession, bool>? release = null
     )
     {
         _session = session;
+        _release = release;
         _handle = handle;
         _path = path;
         _chunkSize = chunkSize;
@@ -140,13 +143,18 @@ internal sealed class SmbReadStream : Stream
         _disposed = true;
         if (disposing)
         {
+            bool closed = false;
             try
             {
-                _session.Store.CloseFile(_handle);
+                closed = _session.Store.CloseFile(_handle) == NTStatus.STATUS_SUCCESS;
             }
             finally
             {
-                _session.Dispose();
+                // The driver's pool takes back a session whose handle closed cleanly.
+                if (_release is not null)
+                    _release(_session, closed);
+                else
+                    _session.Dispose();
             }
         }
         base.Dispose(disposing);
