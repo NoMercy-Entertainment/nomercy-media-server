@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Networking.Cast;
 
 namespace NoMercy.Networking.Discovery;
 
@@ -24,7 +25,8 @@ public interface ICastProbeTargets
     Task<IReadOnlyCollection<string>> GetLanIpsAsync(CancellationToken cancellationToken);
 }
 
-/// <summary>Registered devices' last known LAN addresses.</summary>
+/// <summary>Registered devices' LanIp, plus their connect address when it is on this network:
+/// a web-receiver TV has no LanIp, and the scanner forgets it on restart.</summary>
 public sealed class RegisteredDeviceCastProbeTargets(IDbContextFactory<MediaContext> contextFactory)
     : ICastProbeTargets
 {
@@ -36,11 +38,22 @@ public sealed class RegisteredDeviceCastProbeTargets(IDbContextFactory<MediaCont
             cancellationToken
         );
 
-        return await context
+        List<string?> lanIps = await context
             .Devices.AsNoTracking()
-            .Where(d => d.LanIp != null && d.LanIp != "")
-            .Select(d => d.LanIp!)
-            .Distinct()
+            .Select(d => d.LanIp)
             .ToListAsync(cancellationToken);
+        List<string?> connectIps = await context
+            .Devices.AsNoTracking()
+            .Select(d => (string?)d.Ip)
+            .ToListAsync(cancellationToken);
+
+        return
+        [
+            .. lanIps
+                .Concat(connectIps)
+                .Where(CastAddress.IsOnThisNetwork)
+                .Select(ip => ip!)
+                .Distinct(),
+        ];
     }
 }
