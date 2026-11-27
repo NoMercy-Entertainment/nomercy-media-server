@@ -84,12 +84,15 @@ public partial class VideoHub : ConnectionHub
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 
-    private CastIntent ResolveVideoIntent(Guid userId)
-    {
+    private CastIntent ResolveVideoIntent(Guid userId) =>
         // If the user has a live video player state when handing off to the TV,
         // resume that exact item. Otherwise idle — receiver shows the splash.
-        if (!_videoPlayerStateManager.TryGetValue(userId, out VideoPlayerState? state))
-            return CastIntent.Idle();
+        _videoPlayerStateManager.TryGetValue(userId, out VideoPlayerState? state)
+            ? IntentFor(state)
+            : CastIntent.Idle();
+
+    internal static CastIntent IntentFor(VideoPlayerState state)
+    {
         if (state.CurrentItem is null)
             return CastIntent.Idle();
 
@@ -100,7 +103,8 @@ public partial class VideoHub : ConnectionHub
             return CastIntent.Idle();
 
         string mediaType = parts[0];
-        string mediaId = state.CurrentItem.Id.ToString();
+        // The list id (the show or movie): receivers open /{type}/{id}/watch, and an episode id there is a 404.
+        string mediaId = parts[1];
         int? resumeAt = state.Time > 0 ? state.Time / 1000 : null;
         // The language the handing-off device was playing travels with the
         // position, for the same reason the position does: the receiver opens
