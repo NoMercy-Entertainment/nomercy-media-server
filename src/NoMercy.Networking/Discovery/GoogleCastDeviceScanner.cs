@@ -11,6 +11,7 @@
 
 using System.Collections.Concurrent;
 using System.Net;
+using System.Text.Json;
 using Makaretu.Dns;
 using Microsoft.Extensions.Logging;
 using Message = Makaretu.Dns.Message;
@@ -66,16 +67,24 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
 
     private int _started;
 
+    private static readonly TimeSpan EurekaTimeout = TimeSpan.FromSeconds(2);
+    private const int EurekaPort = 8008;
+    private readonly HttpClient _eurekaClient;
+
     // The transport is optional so DI keeps building this singleton without a
     // registration; a test passes one that never joins the 5353 group.
     public GoogleCastDeviceScanner(
         ILogger<GoogleCastDeviceScanner> logger,
         IMdnsMulticastTransport? multicast = null,
-        ICastProbeTargets? probeTargets = null
+        ICastProbeTargets? probeTargets = null,
+        HttpMessageHandler? eurekaHandler = null
     )
     {
         _logger = logger;
         _probeTargets = probeTargets;
+        _eurekaClient = eurekaHandler is null
+            ? new HttpClient { Timeout = EurekaTimeout }
+            : new HttpClient(eurekaHandler, disposeHandler: false) { Timeout = EurekaTimeout };
         _multicast = multicast ?? new MdnsMulticastTransport();
         _discovery = new(_multicast.Service);
     }
@@ -141,12 +150,48 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
                     cancellationToken
                 );
                 if (reply is not null)
+                {
                     Record(reply, target);
+                    continue;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogDebug(ex, "Direct Google Cast query to {Target} failed", target);
             }
+
+            await RecordFromEurekaAsync(target, cancellationToken);
+        }
+    }
+
+    // Some TVs ignore direct mDNS but answer the Cast HTTP info endpoint with their name.
+    private async Task RecordFromEurekaAsync(string ip, CancellationToken cancellationToken)
+    {
+        try
+        {
+            string body = await _eurekaClient.GetStringAsync(
+                $"http://{ip}:{EurekaPort}/setup/eureka_info?params=name",
+                cancellationToken
+            );
+            using JsonDocument doc = JsonDocument.Parse(body);
+            if (
+                !doc.RootElement.TryGetProperty("name", out JsonElement nameElement)
+                || nameElement.ValueKind != JsonValueKind.String
+            )
+                return;
+
+            string? name = nameElement.GetString();
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            _seen[$"eureka-{ip}"] = (name, null, ip, EurekaPort, DateTime.UtcNow);
+            _knownIps[ip] = 0;
+        }
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested
+            )
+        {
+            _logger.LogDebug(ex, "Cast eureka_info query to {Target} failed", ip);
         }
     }
 
@@ -260,5 +305,6 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
         _discovery.ServiceInstanceDiscovered -= OnInstanceDiscovered;
         _multicast.Dispose();
         _discovery.Dispose();
+        _eurekaClient.Dispose();
     }
 }
