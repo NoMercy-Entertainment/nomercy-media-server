@@ -19,6 +19,7 @@ using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Cast;
 using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;
 using NoMercy.NmSystem.Extensions;
@@ -185,6 +186,18 @@ public class ConnectionHub : Hub
                         }
                 )
                 .RunAsync();
+
+            // Ip is overwritten on every connect, so a TV that comes back through the
+            // tunnel loses its address here. Remember the last one seen on this network.
+            if (
+                client.Type.Equals("tv", StringComparison.OrdinalIgnoreCase)
+                && CastAddress.IsOnThisNetwork(client.Ip)
+            )
+            {
+                await mediaContext
+                    .Devices.Where(x => x.DeviceId == client.DeviceId)
+                    .ExecuteUpdateAsync(x => x.SetProperty(d => d.LanIp, client.Ip));
+            }
 
             // Update CustomName separately — FlexLabs upsert doesn't support conditional expressions.
             // Only overwrite when the client sends a non-empty custom_name, preserving existing names otherwise.
