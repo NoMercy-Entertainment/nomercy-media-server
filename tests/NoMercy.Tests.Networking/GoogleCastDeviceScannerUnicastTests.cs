@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
+using System.Text;
 using Makaretu.Dns;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Networking.Discovery;
@@ -41,6 +42,27 @@ public sealed class GoogleCastDeviceScannerUnicastTests
             new TXTRecord { Strings = [$"id={id}", $"fn={name}", "md=Test Cast"] }
         );
         return msg;
+    }
+
+    private sealed class EurekaHandler(string? body) : HttpMessageHandler
+    {
+        public List<Uri> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            Requests.Add(request.RequestUri!);
+            if (body is null)
+                throw new HttpRequestException("refused");
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json"),
+                }
+            );
+        }
     }
 
     private static GoogleCastDeviceScanner Build(
@@ -121,6 +143,45 @@ public sealed class GoogleCastDeviceScannerUnicastTests
     {
         NonBindingMulticastTransport transport = new();
         using GoogleCastDeviceScanner scanner = Build(transport, KnownIp);
+
+        await scanner.ProbeHostsAsync(CancellationToken.None);
+
+        Assert.Empty(scanner.GetSeen());
+    }
+
+    [Fact]
+    public async Task ProbeHosts_NoMdnsReplyButEurekaNamesTheTv_BecomesSeenHitWithThatName()
+    {
+        NonBindingMulticastTransport transport = new();
+        EurekaHandler handler = new("{\"name\":\"Tv in woonkamer\"}");
+        using GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            transport,
+            new FixedTargets(KnownIp),
+            handler
+        );
+
+        await scanner.ProbeHostsAsync(CancellationToken.None);
+
+        CastMdnsHit hit = Assert.Single(scanner.GetSeen());
+        Assert.Equal("Tv in woonkamer", hit.FriendlyName);
+        Assert.Equal(KnownIp, hit.Ip);
+        Assert.Equal(
+            $"http://{KnownIp}:8008/setup/eureka_info?params=name",
+            handler.Requests.Single().ToString()
+        );
+    }
+
+    [Fact]
+    public async Task ProbeHosts_EurekaRefuses_LeavesNothingSeen()
+    {
+        NonBindingMulticastTransport transport = new();
+        using GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            transport,
+            new FixedTargets(KnownIp),
+            new EurekaHandler(null)
+        );
 
         await scanner.ProbeHostsAsync(CancellationToken.None);
 
