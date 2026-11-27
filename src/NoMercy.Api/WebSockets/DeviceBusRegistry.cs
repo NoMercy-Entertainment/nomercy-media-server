@@ -45,7 +45,11 @@ public sealed class DeviceBusRegistry(
     }
 
     public string? ResolveCastAddress(Device tv) =>
-        CastAddress.ResolveForDevice(tv, castMdnsRegistry.GetSeen());
+        CastAddress.ResolveForDevice(
+            tv,
+            castMdnsRegistry.GetSeen(),
+            castMdnsRegistry.GetLastKnown()
+        );
 
     public (bool Foreground, bool ScreenOn) GetStatus(Ulid deviceId) =>
         _status.TryGetValue(deviceId, out (bool Foreground, bool ScreenOn) s) ? s : (false, false);

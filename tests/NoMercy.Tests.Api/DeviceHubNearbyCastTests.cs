@@ -76,6 +76,8 @@ public class DeviceHubNearbyCastTests : IClassFixture<NoMercyApiFactory>
         public bool IsReachable(string? lanIp) => false;
 
         public IReadOnlyCollection<CastMdnsHit> GetSeen() => hits;
+
+        public IReadOnlyCollection<CastMdnsHit> GetLastKnown() => hits;
     }
 
     private DeviceHub CreateHub(Guid callerId, IServerCastWaker waker)

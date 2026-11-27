@@ -35,4 +35,7 @@ public interface ICastMdnsRegistry
     /// relationship at all.
     /// </summary>
     IReadOnlyCollection<CastMdnsHit> GetSeen();
+
+    /// <summary>Every hit since start, however old; only the cast wake path reads it.</summary>
+    IReadOnlyCollection<CastMdnsHit> GetLastKnown();
 }
