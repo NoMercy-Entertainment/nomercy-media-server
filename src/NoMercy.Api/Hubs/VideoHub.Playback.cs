@@ -682,7 +682,9 @@ public partial class VideoHub
                 .LaunchIfColdAsync(
                     targetIsLive: false,
                     targetIp,
-                    useAndroidReceiver: targetHasApp || _busRegistry.IsAppConnected(targetTv),
+                    // Not "a hub connection with this device id": the web receiver on a TV without
+                    // the app connects with the same id, and a Cast Connect launch then drops its video.
+                    useAndroidReceiver: targetHasApp,
                     resolveLaunchData: () =>
                         _castTokenService.MintAsync(
                             callerBearer: callerBearer,
