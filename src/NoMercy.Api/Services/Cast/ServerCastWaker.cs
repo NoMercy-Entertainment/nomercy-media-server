@@ -91,7 +91,8 @@ public class ServerCastWaker(
             // Connect timeout.
             useAndroidReceiver: useAndroidReceiver
                 && CastAddress.Resolve(tv.LanIp, tv.Ip) is not null,
-            isAppOnlineNow: busRegistry is null ? null : () => busRegistry.IsOnline(deviceId),
+            isAppOnlineNow: busRegistry is null ? null : () => busRegistry.IsAppConnected(tv),
+            targetHasApp: tv.Fingerprint is not null,
             resolveLaunchData: () =>
                 tokens.MintAsync(
                     callerBearer: callerBearer,

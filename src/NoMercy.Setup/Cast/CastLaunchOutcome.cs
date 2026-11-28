@@ -16,6 +16,7 @@ public enum CastLaunchOutcome
 {
     Launched,
     SkippedLive,
+    SkippedRecent,
     NoAddress,
     NoReceiver,
     Failed,
