@@ -21,6 +21,7 @@ using NoMercy.Database;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking;
+using NoMercy.Networking.Cast;
 using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;
 using NoMercy.Tests.Networking.Infrastructure;
@@ -84,7 +85,8 @@ public sealed class ConnectionHubTests : IDisposable
         out Mock<ISingleClientProxy> userProxy,
         string path = "/videoHub",
         IQueryCollection? query = null,
-        Guid? connectingUserId = null
+        Guid? connectingUserId = null,
+        string remoteIp = "10.0.0.7"
     )
     {
         UserCache userCache = new();
@@ -99,7 +101,7 @@ public sealed class ConnectionHubTests : IDisposable
         httpContext.Request.Path = path;
         if (query is not null)
             httpContext.Request.Query = query;
-        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("10.0.0.7");
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(remoteIp);
 
         TestableConnectionHub hub = new(
             new HttpContextAccessorStub(httpContext),
@@ -239,6 +241,98 @@ public sealed class ConnectionHubTests : IDisposable
             device.WsConnectedAt >= beforeConnect,
             "a hub connection must advance WsConnectedAt, or the drop-rule job reads this device as never seen"
         );
+    }
+
+    private static QueryCollection ClientQuery(string deviceId, string type)
+    {
+        return new(
+            new Dictionary<string, StringValues>
+            {
+                ["client_id"] = deviceId,
+                ["client_type"] = type,
+            }
+        );
+    }
+
+    [Fact]
+    public async Task OnConnectedAsync_TvFromLanAddress_StoresItAsLanIp()
+    {
+        User user = new()
+        {
+            Id = Guid.NewGuid(),
+            Email = "test@nomercy.tv",
+            Name = "Test",
+        };
+        TestableConnectionHub hub = BuildHub(
+            user,
+            out _,
+            out _,
+            query: ClientQuery("tv-lan", "tv"),
+            remoteIp: "192.168.50.80"
+        );
+
+        await hub.OnConnectedAsync();
+
+        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
+        Device device = await ctx.Devices.SingleAsync(d => d.DeviceId == "tv-lan");
+        Assert.Equal("192.168.50.80", device.LanIp);
+    }
+
+    [Fact]
+    public async Task OnConnectedAsync_TvReconnectsFromOutsideTheNetwork_KeepsItsLanAddress()
+    {
+        User user = new()
+        {
+            Id = Guid.NewGuid(),
+            Email = "test@nomercy.tv",
+            Name = "Test",
+        };
+        await BuildHub(
+                user,
+                out _,
+                out _,
+                query: ClientQuery("tv-moves", "tv"),
+                remoteIp: "192.168.50.80"
+            )
+            .OnConnectedAsync();
+
+        await BuildHub(
+                user,
+                out _,
+                out _,
+                query: ClientQuery("tv-moves", "tv"),
+                remoteIp: "203.0.113.9"
+            )
+            .OnConnectedAsync();
+
+        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
+        Device device = await ctx.Devices.SingleAsync(d => d.DeviceId == "tv-moves");
+        Assert.Equal("203.0.113.9", device.Ip);
+        Assert.Equal("192.168.50.80", CastAddress.Resolve(device.LanIp, device.Ip));
+    }
+
+    [Fact]
+    public async Task OnConnectedAsync_NonTvFromLanAddress_LeavesLanIpEmpty()
+    {
+        User user = new()
+        {
+            Id = Guid.NewGuid(),
+            Email = "test@nomercy.tv",
+            Name = "Test",
+        };
+        TestableConnectionHub hub = BuildHub(
+            user,
+            out _,
+            out _,
+            query: ClientQuery("phone-lan", "android"),
+            remoteIp: "192.168.50.81"
+        );
+
+        await hub.OnConnectedAsync();
+
+        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
+        Device device = await ctx.Devices.SingleAsync(d => d.DeviceId == "phone-lan");
+        Assert.Null(device.LanIp);
     }
 
     [Fact]
