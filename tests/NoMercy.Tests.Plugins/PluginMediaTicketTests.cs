@@ -70,7 +70,12 @@ public class PluginMediaTicketTests
         (PluginMediaTicketMinter minter, _) = Build();
         string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(5));
 
-        minter.Read(ticket[..^2] + "AA").Should().BeNull();
+        // The first signature character carries 6 real bits, so changing it always
+        // changes the bytes; the last one can decode the same after an edit.
+        int first = ticket.IndexOf('.') + 1;
+        char other = ticket[first] == 'A' ? 'B' : 'A';
+
+        minter.Read(ticket[..first] + other + ticket[(first + 1)..]).Should().BeNull();
     }
 
     [Fact]
