@@ -43,7 +43,13 @@ public sealed class SmbSessionReuseTests
                 It.IsAny<CreateOptions>(),
                 It.IsAny<SecurityContext>()
             ))
-            .Returns(NTStatus.STATUS_OBJECT_NAME_NOT_FOUND);
+            .Returns(
+                new InvocationFunc(call =>
+                    (string)call.Arguments[2] == string.Empty
+                        ? NTStatus.STATUS_SUCCESS
+                        : NTStatus.STATUS_OBJECT_NAME_NOT_FOUND
+                )
+            );
         store.Setup(s => s.Disconnect()).Returns(NTStatus.STATUS_SUCCESS);
 
         int connects = 0;
@@ -70,6 +76,69 @@ public sealed class SmbSessionReuseTests
         }
 
         connects().Should().Be(1, "a served segment must not log in to the NAS once per check");
+    }
+
+    // A share that has the file until its connection dies; from then on every
+    // request answers with an error status, as a dropped session does.
+    private static ISMBFileStore StoreWithFile(Func<bool> dead)
+    {
+        Mock<ISMBFileStore> store = new();
+        object handle = new();
+        FileStatus status = FileStatus.FILE_OPENED;
+        store
+            .Setup(s => s.CreateFile(
+                out handle,
+                out status,
+                It.IsAny<string>(),
+                It.IsAny<AccessMask>(),
+                It.IsAny<SMBLibrary.FileAttributes>(),
+                It.IsAny<ShareAccess>(),
+                It.IsAny<CreateDisposition>(),
+                It.IsAny<CreateOptions>(),
+                It.IsAny<SecurityContext>()
+            ))
+            .Returns(() => dead() ? NTStatus.STATUS_INVALID_SMB : NTStatus.STATUS_SUCCESS);
+        FileInformation info = new FileBasicInformation
+        {
+            FileAttributes = SMBLibrary.FileAttributes.Normal,
+        };
+        store
+            .Setup(s => s.GetFileInformation(
+                out info,
+                It.IsAny<object>(),
+                It.IsAny<FileInformationClass>()
+            ))
+            .Returns(NTStatus.STATUS_SUCCESS);
+        return store.Object;
+    }
+
+    [Fact]
+    public void A_dead_idle_session_is_replaced_and_the_file_is_still_found()
+    {
+        bool firstIsDead = false;
+        int connects = 0;
+        using SmbStorageDriver driver = new(
+            new SmbDriverConfig("192.0.2.10", "Media", 445, 30),
+            log: null,
+            connect: () =>
+            {
+                bool first = ++connects == 1;
+                return new SmbSession
+                {
+                    Client = new SMB2Client(),
+                    Store = StoreWithFile(() => first && firstIsDead),
+                };
+            }
+        );
+        driver.FileExists("TV.Shows/show/e1.m4s").Should().BeTrue();
+
+        firstIsDead = true;
+
+        driver
+            .FileExists("TV.Shows/show/e1.m4s")
+            .Should()
+            .BeTrue("a dropped connection must never read as a missing file");
+        connects.Should().Be(2);
     }
 
     [Fact]

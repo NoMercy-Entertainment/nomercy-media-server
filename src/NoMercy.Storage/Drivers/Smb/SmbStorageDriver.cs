@@ -142,11 +142,42 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         long now = Environment.TickCount64;
         while (_idle.TryTake(out (SmbSession Session, long IdleSince) idle))
         {
-            if (now - idle.IdleSince <= (long)SessionIdleLimit.TotalMilliseconds)
+            if (
+                now - idle.IdleSince <= (long)SessionIdleLimit.TotalMilliseconds
+                && IsAlive(idle.Session)
+            )
                 return idle.Session;
             idle.Session.Dispose();
         }
         return _connect();
+    }
+
+    // A dropped session answers with an error status, which the metadata calls would
+    // read as "file not found". Opening the share root costs far less than a login.
+    private static bool IsAlive(SmbSession session)
+    {
+        try
+        {
+            NTStatus st = session.Store.CreateFile(
+                out object handle,
+                out FileStatus _,
+                string.Empty,
+                AccessMask.GENERIC_READ,
+                FileAttributes.Directory,
+                ShareAccess.Read | ShareAccess.Write | ShareAccess.Delete,
+                CreateDisposition.FILE_OPEN,
+                CreateOptions.FILE_DIRECTORY_FILE,
+                null
+            );
+            if (st != NTStatus.STATUS_SUCCESS)
+                return false;
+            session.Store.CloseFile(handle);
+            return true;
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     // A session goes back only after a clean call; one that threw may be broken.
