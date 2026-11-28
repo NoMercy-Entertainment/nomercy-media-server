@@ -92,7 +92,7 @@ public class ServerCastWaker(
             useAndroidReceiver: useAndroidReceiver
                 && CastAddress.Resolve(tv.LanIp, tv.Ip) is not null,
             isAppOnlineNow: busRegistry is null ? null : () => busRegistry.IsAppConnected(tv),
-            targetHasApp: tv.Fingerprint is not null,
+            targetHasApp: CastAppPresence.HasApp(tv, DateTime.UtcNow),
             resolveLaunchData: () =>
                 tokens.MintAsync(
                     callerBearer: callerBearer,
