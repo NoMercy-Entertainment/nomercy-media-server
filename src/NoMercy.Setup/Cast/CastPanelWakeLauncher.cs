@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NoMercy.Networking.Cast;
 
@@ -43,6 +44,10 @@ public class CastPanelWakeLauncher(
 {
     public static bool ShouldFireCastWake(bool targetIsLive) => !targetIsLive;
 
+    // A TV with the NoMercy app that was launched a moment ago is still starting its app.
+    private const long RecentLaunchWindowMs = 20_000;
+    private readonly ConcurrentDictionary<string, long> _lastLaunchAt = new();
+
     /// <summary>
     /// resolveLaunchData is deferred so a live target never pays for the
     /// token-exchange call it would just discard.
@@ -59,7 +64,8 @@ public class CastPanelWakeLauncher(
         bool useAndroidReceiver,
         Func<Task<LaunchCustomData?>> resolveLaunchData,
         Func<bool>? isTargetOnlineNow = null,
-        Func<bool>? isAppOnlineNow = null
+        Func<bool>? isAppOnlineNow = null,
+        bool targetHasApp = false
     )
     {
         if (!ShouldFireCastWake(targetIsLive))
@@ -72,6 +78,21 @@ public class CastPanelWakeLauncher(
                 "Cast launch skipped: no LAN address recorded for the target TV, so it is not woken"
             );
             return CastLaunchOutcome.NoAddress;
+        }
+
+        long now = Environment.TickCount64;
+        if (
+            targetHasApp
+            && _lastLaunchAt.TryGetValue(targetIp, out long lastAt)
+            && now - lastAt < RecentLaunchWindowMs
+        )
+        {
+            logger.LogInformation(
+                "Cast launch skipped: {TargetIp} was launched {Seconds}s ago and its app is still starting",
+                targetIp,
+                (now - lastAt) / 1000
+            );
+            return CastLaunchOutcome.SkippedRecent;
         }
 
         try
@@ -93,6 +114,7 @@ public class CastPanelWakeLauncher(
                 useAndroidReceiver ? "cast connect app" : "web receiver"
             );
 
+            _lastLaunchAt[targetIp] = now;
             LaunchCustomData? launchData = await resolveLaunchData();
             if (launchData is null)
             {

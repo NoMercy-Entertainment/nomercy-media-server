@@ -310,6 +310,80 @@ public class CastPanelWakeLauncherTests
     }
 
     [Fact]
+    public async Task LaunchIfColdAsync_HandoffRightAfterWakeOfRegisteredTv_SendsNoWebReceiverLaunch()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeLauncher();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        CastLaunchOutcome wake = await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: true,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(null),
+            targetHasApp: true
+        );
+        CastLaunchOutcome handoff = await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: false,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(null),
+            targetHasApp: true
+        );
+
+        wake.Should().Be(CastLaunchOutcome.Launched);
+        handoff.Should().Be(CastLaunchOutcome.SkippedRecent);
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(ReceiverName, It.IsAny<object?>(), false),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task LaunchIfColdAsync_HandoffRightAfterWakeOfTvWithoutApp_StillLaunchesWebReceiver()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeLauncher();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: false,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(null),
+            targetHasApp: false
+        );
+        CastLaunchOutcome handoff = await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: false,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(null),
+            targetHasApp: false
+        );
+
+        handoff.Should().Be(CastLaunchOutcome.Launched);
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(ReceiverName, It.IsAny<object?>(), false),
+            Times.Exactly(2)
+        );
+    }
+
+    [Fact]
+    public async Task LaunchIfColdAsync_RegisteredTvWithNoRecentWake_Launches()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeLauncher();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        CastLaunchOutcome outcome = await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: true,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(null),
+            targetHasApp: true
+        );
+
+        outcome.Should().Be(CastLaunchOutcome.Launched);
+    }
+
+    [Fact]
     public async Task LaunchIfColdAsync_NeverPolls_WhenNoOnlineCheckWasGiven()
     {
         (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeLauncher();

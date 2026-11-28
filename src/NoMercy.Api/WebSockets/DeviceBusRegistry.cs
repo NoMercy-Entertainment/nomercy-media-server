@@ -100,6 +100,15 @@ public sealed class DeviceBusRegistry(
     public bool IsOnline(Ulid deviceId) =>
         _live.TryGetValue(deviceId, out WebSocket? ws) && ws.State == WebSocketState.Open;
 
+    // The app connects its hubs before (or without) its device-bus link.
+    public bool IsAppConnected(Device device) =>
+        IsOnline(device.Id)
+        || (
+            connectedClients?.Clients.Values.Any(c =>
+                c.DeviceId.Equals(device.DeviceId, StringComparison.OrdinalIgnoreCase)
+            ) ?? false
+        );
+
     // The web receiver never joins the device bus; it is reachable on MusicHub.
     public bool IsOnMusicHub(Device device) =>
         connectedClients is not null

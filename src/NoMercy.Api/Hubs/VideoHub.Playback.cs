@@ -674,6 +674,7 @@ public partial class VideoHub
             );
             CastIntent intent = ResolveVideoIntent(user.Id);
             string? callerBearer = CallerBearer.From(Context);
+            bool targetHasApp = targetTv.Fingerprint is not null;
 
             // A handoff always wakes the panel, so the target is treated as cold.
             // Not awaited: a Cast launch takes seconds and must not hold up the handoff.
@@ -681,8 +682,8 @@ public partial class VideoHub
                 .LaunchIfColdAsync(
                     targetIsLive: false,
                     targetIp,
-                    useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
-                    () =>
+                    useAndroidReceiver: targetHasApp || _busRegistry.IsAppConnected(targetTv),
+                    resolveLaunchData: () =>
                         _castTokenService.MintAsync(
                             callerBearer: callerBearer,
                             userId: user.Id,
@@ -693,7 +694,9 @@ public partial class VideoHub
                             clientLocale: locale,
                             deviceFingerprint: targetTv.DeviceId,
                             deviceName: targetTv.CustomName ?? targetTv.Name
-                        )
+                        ),
+                    isAppOnlineNow: () => _busRegistry.IsAppConnected(targetTv),
+                    targetHasApp: targetHasApp
                 )
                 .ContinueWith(
                     task =>

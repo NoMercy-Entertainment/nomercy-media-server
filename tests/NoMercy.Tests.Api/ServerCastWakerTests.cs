@@ -20,6 +20,7 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Discovery;
+using NoMercy.Networking.Messaging;
 using NoMercy.Setup.Cast;
 using Xunit;
 
@@ -91,6 +92,86 @@ public class ServerCastWakerTests
         dispatched.Should().BeTrue();
         chromeCast.Verify(
             c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), It.IsAny<bool>()),
+            Times.Once
+        );
+    }
+
+    private static (
+        ServerCastWaker Waker,
+        Mock<IChromeCastService> ChromeCast,
+        ConnectedClients Clients
+    ) MakeWakerWithHubs()
+    {
+        Mock<IChromeCastService> chromeCast = new();
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TvIp)).ReturnsAsync("Test Room TV");
+        ConnectedClients clients = new();
+        DeviceBusRegistry busRegistry = new(
+            Mock.Of<IDeviceStateRepository>(),
+            Mock.Of<IHubContext<DeviceHub>>(),
+            Mock.Of<ICastMdnsRegistry>(),
+            clients
+        );
+        ServerCastWaker waker = new(
+            new CastPanelWakeLauncher(
+                chromeCast.Object,
+                NullLogger<CastPanelWakeLauncher>.Instance,
+                followUpPollIntervalMs: 1,
+                followUpPollAttempts: 2
+            ),
+            new CastSessionTokenService(),
+            new HttpContextAccessor(),
+            NullLogger<ServerCastWaker>.Instance,
+            busRegistry: busRegistry
+        );
+        return (waker, chromeCast, clients);
+    }
+
+    private static Device RegisteredTv() =>
+        new()
+        {
+            Id = Ulid.NewUlid(),
+            DeviceId = "test-device-0001",
+            Fingerprint = "test-fingerprint-0001",
+            Name = "Test Room TV",
+            Type = "tv",
+            LanIp = TvIp,
+        };
+
+    [Fact]
+    public async Task WakeAsync_AppConnectedOnAHubButNotTheBus_NeverFallsBackToTheWebReceiver()
+    {
+        (ServerCastWaker waker, Mock<IChromeCastService> chromeCast, ConnectedClients clients) =
+            MakeWakerWithHubs();
+        Device tv = RegisteredTv();
+        clients.Clients["connection-1"] = new()
+        {
+            DeviceId = tv.DeviceId,
+            Endpoint = "/videoHub",
+        };
+
+        await waker.WakeAsync(tv, Guid.NewGuid(), CastIntent.Idle(), null);
+        await Task.Delay(300);
+
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), true),
+            Times.Once
+        );
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), false),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task WakeAsync_AppNeverConnects_FallsBackToTheWebReceiver()
+    {
+        (ServerCastWaker waker, Mock<IChromeCastService> chromeCast, _) = MakeWakerWithHubs();
+
+        await waker.WakeAsync(RegisteredTv(), Guid.NewGuid(), CastIntent.Idle(), null);
+        await Task.Delay(300);
+
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver("Test Room TV", It.IsAny<object?>(), false),
             Times.Once
         );
     }
