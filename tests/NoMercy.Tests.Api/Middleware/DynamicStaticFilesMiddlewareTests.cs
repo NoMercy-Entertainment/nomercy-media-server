@@ -109,6 +109,74 @@ public sealed class DynamicStaticFilesMiddlewareTests
         public void Dispose() => Registry.Remove(FolderId);
     }
 
+    // Records the largest read asked of the storage stream. Each read of a file on a
+    // network share is a round trip, so small reads cap the speed far below the link.
+    private sealed class ReadSizeStream(int length)
+        : MemoryStream(new byte[length], writable: false)
+    {
+        public int LargestRead { get; private set; }
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default
+        )
+        {
+            LargestRead = Math.Max(LargestRead, buffer.Length);
+            return base.ReadAsync(buffer, cancellationToken);
+        }
+
+        public override Task<int> ReadAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken
+        )
+        {
+            LargestRead = Math.Max(LargestRead, count);
+            return base.ReadAsync(buffer, offset, count, cancellationToken);
+        }
+
+        public override void CopyTo(Stream destination, int bufferSize)
+        {
+            LargestRead = Math.Max(LargestRead, bufferSize);
+            base.CopyTo(destination, bufferSize);
+        }
+
+        public override Task CopyToAsync(
+            Stream destination,
+            int bufferSize,
+            CancellationToken cancellationToken
+        )
+        {
+            LargestRead = Math.Max(LargestRead, bufferSize);
+            return base.CopyToAsync(destination, bufferSize, cancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("bytes=100-")]
+    public async Task InvokeAsync_MediaFile_ReadsTheStorageInLargeBlocks(string? range)
+    {
+        const int length = 7_000_000;
+        using RegisteredFolder folder = new();
+        ReadSizeStream file = new(length);
+        Mock<IStorage> storage = CreateStorage(size: length);
+        storage.Setup(s => s.OpenRead(It.IsAny<string>())).Returns(file);
+        (
+            DynamicStaticFilesMiddleware middleware,
+            Mock<IStorageFactory> storageFactory,
+            MediaActivityMonitor activityMonitor,
+            _
+        ) = CreateMiddleware(storage.Object);
+        DefaultHttpContext context = CreateContext($"/{folder.FolderId}/segment_00001.m4s", range);
+
+        await middleware.InvokeAsync(context, storageFactory.Object, activityMonitor);
+
+        context.Response.Body.Length.Should().Be(range is null ? length : length - 100);
+        file.LargestRead.Should().BeGreaterThanOrEqualTo(1024 * 1024);
+    }
+
     [Fact]
     public async Task InvokeAsync_PathHasNoValue_CallsNext()
     {
